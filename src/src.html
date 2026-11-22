@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tractor · 拖拉机</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Figtree:wght@400;500;600;700&family=Ma+Shan+Zheng&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* A jade card-parlor table at night: lacquer cinnabar seals, ivory cards, one gold thread for trump. */
+  --rail: #08201c;
+  --felt: #15443b;
+  --felt-deep: #0d2f29;
+  --ivory: #f6f0e2;
+  --ink: #1c1915;
+  --cinnabar: #c23b2c;
+  --gold: #d9a84e;
+  --mist: rgba(246, 240, 226, 0.62);
+  --line: rgba(246, 240, 226, 0.14);
+  --display: "Ma Shan Zheng", "STKaiti", "KaiTi", serif;
+  --body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --idx: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --cw: 48px; --ch: 68px; --ov: -25px;
+  --tw: 44px; --th: 62px; --tov: -25px;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--rail); color: var(--ivory); font-family: var(--body); overflow: hidden; -webkit-tap-highlight-color: transparent; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, .card:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+#app { height: 100%; display: flex; flex-direction: column; max-width: 1080px; margin: 0 auto;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+
+/* header */
+header { display: flex; align-items: center; gap: 10px; padding: 8px 14px 6px; }
+.brand { display: flex; align-items: baseline; gap: 8px; margin-right: auto; white-space: nowrap; }
+.icon-btn { white-space: nowrap; }
+.brand b { font-family: var(--display); font-weight: 400; font-size: 26px; color: var(--ivory); line-height: 1; }
+.brand span { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--mist); }
+.score { display: flex; gap: 6px; }
+.chip { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; color: var(--mist); white-space: nowrap; }
+.chip strong { font-family: var(--idx); font-size: 18px; font-weight: 700; color: var(--ivory); line-height: 1; }
+.chip.us { border-color: rgba(217, 168, 78, .5); }
+.chip .zh { font-family: var(--display); color: var(--gold); font-size: 15px; }
+.icon-btn { background: transparent; border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; font-size: 13px; color: var(--mist); }
+.icon-btn:hover { color: var(--ivory); border-color: var(--mist); }
+.icon-btn.on { color: var(--ink); background: var(--gold); border-color: var(--gold); }
+
+/* table */
+#table { flex: 1; min-height: 0; margin: 0 10px; border-radius: 22px; position: relative; overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 38%, var(--felt) 0%, var(--felt-deep) 70%);
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 0 60px rgba(0,0,0,.35);
+  display: grid; grid-template-columns: minmax(84px, 1fr) minmax(0, 3fr) minmax(84px, 1fr); grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas: "seal n meter" "w c e"; }
+.watermark { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
+  font-family: var(--display); font-size: min(46vmin, 360px); line-height: 1; color: var(--ivory); opacity: .06; }
+
+.seal-box { grid-area: seal; padding: 12px; display: flex; gap: 10px; align-items: center; }
+.seal { width: 50px; height: 50px; flex: none; border-radius: 6px; background: var(--cinnabar); color: var(--ivory); display: grid; place-items: center;
+  box-shadow: inset 0 0 0 3px var(--cinnabar), inset 0 0 0 4.5px rgba(246,240,226,.7); position: relative; }
+.seal .sym { font-size: 28px; line-height: 1; }
+.seal .zh { position: absolute; right: 4px; bottom: 2px; font-family: var(--display); font-size: 13px; }
+.seal.none { background: transparent; box-shadow: inset 0 0 0 1.5px dashed; border: 1.5px dashed var(--mist); color: var(--mist); }
+.seal.stamp { animation: stamp .55s cubic-bezier(.2,.9,.3,1.3); }
+@keyframes stamp { 0% { transform: scale(2.2) rotate(-14deg); opacity: 0; } 60% { opacity: 1; } 100% { transform: scale(1) rotate(0); } }
+.seal-txt { font-size: 12px; color: var(--mist); line-height: 1.35; }
+.seal-txt strong { display: block; color: var(--ivory); font-size: 14px; font-weight: 600; }
+
+.meter { grid-area: meter; padding: 12px 14px; justify-self: end; text-align: right; min-width: 0; }
+.meter .lbl { font-size: 12px; color: var(--mist); }
+.meter .num { white-space: nowrap; font-family: var(--idx); font-size: 30px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.meter .num small { font-size: 15px; color: var(--mist); font-weight: 500; }
+.bar { height: 4px; border-radius: 2px; background: var(--line); margin-top: 6px; width: 120px; max-width: 100%; margin-left: auto; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--gold); transition: width .4s; }
+.plus { color: var(--gold); font-weight: 600; font-size: 13px; animation: rise 1.4s ease-out forwards; display: inline-block; }
+@keyframes rise { from { transform: translateY(6px); opacity: 0; } 25% { opacity: 1; } to { transform: translateY(-8px); opacity: 0; } }
+
+.seat { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 6px; text-align: center; }
+.seat.n { grid-area: n; }
+.seat.w { grid-area: w; align-self: center; }
+.seat.e { grid-area: e; align-self: center; }
+.avatar { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; font-family: var(--display); font-size: 24px;
+  background: var(--felt-deep); box-shadow: inset 0 0 0 1.5px var(--line); position: relative; transition: box-shadow .2s; }
+.seat.mate .avatar { box-shadow: inset 0 0 0 1.5px rgba(217,168,78,.6); }
+.seat.turn .avatar { box-shadow: 0 0 0 3px var(--gold), 0 0 18px rgba(217,168,78,.45); }
+.seat .nm { font-weight: 600; font-size: 14px; }
+.seat .role { font-size: 11px; color: var(--mist); }
+.badges { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; }
+.badge { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: rgba(0,0,0,.28); color: var(--mist); font-variant-numeric: tabular-nums; }
+.badge.dealer { background: var(--gold); color: var(--ink); font-weight: 700; }
+.badge.decl { background: var(--cinnabar); color: var(--ivory); }
+
+.center { grid-area: c; position: relative; min-height: 0; }
+.slot { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.slot.s { left: 50%; bottom: 6px; transform: translateX(-50%); }
+.slot.n { left: 50%; top: 2px; transform: translateX(-50%); }
+.slot.w { left: 0; top: 50%; transform: translateY(-50%); }
+.slot.e { right: 0; top: 50%; transform: translateY(-50%); align-items: flex-end; }
+.slot .row { display: flex; padding-left: calc(-1 * var(--tov)); }
+.slot .tag { font-size: 11px; color: var(--mist); }
+.slot.win .row .card { box-shadow: 0 0 0 2px var(--gold), 0 2px 6px rgba(0,0,0,.4); }
+.slot .pass { font-size: 12px; color: var(--mist); }
+.slot.drop .row { animation: drop .28s ease-out; }
+@keyframes drop { from { transform: translateY(-10px) scale(1.05); opacity: 0; } to { transform: none; opacity: 1; } }
+.center-note { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 0 10px; pointer-events: none; }
+.center-note div { font-size: 14px; color: var(--mist); max-width: 30ch; }
+.center-note .big { font-family: var(--display); font-size: 34px; color: var(--ivory); display: block; margin-bottom: 4px; }
+
+/* cards */
+.card { width: var(--cw); height: var(--ch); margin-left: var(--ov); flex: none; position: relative; border-radius: 6px;
+  background: linear-gradient(180deg, #fbf7ec, var(--ivory)); color: var(--ink);
+  box-shadow: -1px 0 2px rgba(0,0,0,.22), inset 0 0 0 1px rgba(28,25,21,.14);
+  display: flex; flex-direction: column; align-items: flex-start; padding: 4px 0 0 4px; font-family: var(--idx); line-height: .95;
+  user-select: none; -webkit-user-select: none; transition: transform .12s ease; }
+.card.red { color: var(--cinnabar); }
+.card .r { font-size: calc(var(--cw) * .42); font-weight: 700; letter-spacing: -.05em; }
+.card .s { font-size: calc(var(--cw) * .36); margin-top: 1px; }
+.card .pip { position: absolute; right: 4px; bottom: 6px; font-size: calc(var(--cw) * .62); line-height: 1; opacity: .9; }
+.card.jk .r, .card.jk .s { font-family: var(--display); font-weight: 400; font-size: calc(var(--cw) * .38); letter-spacing: 0; }
+.card.jk .pip { font-family: var(--display); font-size: calc(var(--cw) * .5); }
+.card.trump::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; border-radius: 0 0 6px 6px; background: var(--gold); }
+.card.lvl::before { content: ""; position: absolute; left: 3px; top: 3px; bottom: 7px; width: 2px; border-radius: 1px; background: var(--gold); opacity: .8; }
+.card.kit .dot { position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 1.5px var(--ivory); }
+.mini { --cw: var(--tw); --ch: var(--th); --ov: var(--tov); border-radius: 4px; padding: 2px 0 0 3px; }
+.mini .pip { display: none; }
+
+/* dock */
+#dock { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+#bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 40px; }
+#status { flex: 1 1 220px; font-size: 14px; color: var(--mist); line-height: 1.35; }
+#status strong { color: var(--ivory); font-weight: 600; }
+#status .err { color: #f2a08f; }
+.btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn { border: 1px solid var(--line); background: rgba(246,240,226,.06); border-radius: 10px; padding: 9px 14px; font-size: 14px; font-weight: 600; min-height: 40px; }
+.btn:hover:not(:disabled) { border-color: var(--mist); }
+.btn.primary { background: var(--gold); color: var(--ink); border-color: var(--gold); }
+.btn.seal-btn { background: var(--cinnabar); border-color: var(--cinnabar); color: var(--ivory); }
+.btn:disabled { opacity: .38; cursor: default; }
+#hand { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 14px; padding: 18px 2px 2px; overflow-y: auto; max-height: 46vh; }
+.grp { display: flex; flex-wrap: wrap; row-gap: 8px; padding-left: calc(-1 * var(--ov)); }
+#hand .card { cursor: pointer; }
+#hand .card:hover { transform: translateY(-4px); }
+#hand .card.sel { transform: translateY(-15px); box-shadow: 0 0 0 2px var(--gold), 0 6px 12px rgba(0,0,0,.35); }
+
+/* toast + modals */
+#toast { position: fixed; left: 50%; top: calc(12px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 30; display: flex; flex-direction: column; gap: 6px; align-items: center; pointer-events: none; }
+.toast { background: var(--ink); color: var(--ivory); border: 1px solid var(--line); padding: 8px 14px; border-radius: 999px; font-size: 14px; box-shadow: 0 6px 18px rgba(0,0,0,.4); animation: tin .25s ease-out; }
+@keyframes tin { from { opacity: 0; transform: translateY(-6px); } }
+.modal { position: fixed; inset: 0; z-index: 20; background: rgba(4, 14, 12, .72); display: grid; place-items: center; padding: 16px; }
+.sheet { background: var(--felt-deep); border: 1px solid var(--line); border-radius: 18px; max-width: 560px; width: 100%; max-height: 88vh; overflow-y: auto; padding: 22px 22px 18px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.sheet h2 { font-family: var(--display); font-weight: 400; font-size: 34px; margin: 0 0 4px; line-height: 1.1; text-wrap: balance; }
+.sheet h3 { font-size: 15px; margin: 18px 0 6px; color: var(--gold); }
+.sheet p, .sheet li { font-size: 14.5px; line-height: 1.55; color: rgba(246,240,226,.86); max-width: 62ch; }
+.sheet ul { padding-left: 18px; margin: 6px 0; }
+.sheet .acts { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+.sheet table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.sheet td { padding: 6px 4px; border-bottom: 1px solid var(--line); }
+.sheet td:last-child { text-align: right; font-weight: 600; }
+.kitrow { display: flex; padding-left: calc(-1 * var(--tov)); margin: 6px 0; }
+.levels { display: flex; gap: 10px; margin-top: 12px; }
+.lv { flex: 1; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.lv .t { font-size: 12px; color: var(--mist); }
+.lv .v { font-family: var(--display); font-size: 34px; line-height: 1.1; }
+.lv .v small { font-family: var(--body); font-size: 13px; color: var(--gold); margin-left: 6px; }
+.lv.us { border-color: rgba(217,168,78,.5); }
+.menu-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.menu-list .btn { text-align: left; }
+
+@media (max-width: 640px) {
+  :root { --cw: 40px; --ch: 57px; --ov: -21px; --tw: 29px; --th: 41px; --tov: -17px; }
+  header { padding: 6px 10px 4px; gap: 6px; }
+  .brand span, .lg { display: none; }
+  .brand b { font-size: 22px; }
+  .icon-btn { padding: 5px 8px; font-size: 12px; }
+  .chip { padding: 3px 8px; font-size: 12px; }
+  .chip strong { font-size: 16px; }
+  #table { margin: 0 6px; grid-template-columns: 64px minmax(0,1fr) 64px; border-radius: 16px; }
+  .seal-box { padding: 8px; gap: 6px; flex-direction: column; align-items: flex-start; }
+  .seal { width: 40px; height: 40px; } .seal .sym { font-size: 22px; }
+  .seal-txt { font-size: 11px; } .seal-txt strong { font-size: 12px; }
+  .meter { padding: 8px 10px; } .meter .num { font-size: 22px; } .meter .num small { font-size: 12px; } .bar { width: 64px; }
+  .avatar { width: 38px; height: 38px; font-size: 20px; }
+  .seat { padding: 4px 2px; } .seat .nm { font-size: 13px; }
+  #hand { gap: 8px 10px; padding-top: 16px; max-height: 44vh; }
+  .btn { padding: 8px 11px; font-size: 13.5px; }
+  #status { font-size: 13px; }
+}
+@media (max-height: 640px) and (min-width: 641px) { :root { --cw: 42px; --ch: 59px; --ov: -22px; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand"><b>拖拉机</b><span>Tractor · 3 decks</span></div>
+    <div class="score" id="score"></div>
+    <button class="icon-btn" id="btnLast" type="button" aria-pressed="false">Last<span class="lg"> trick</span></button>
+    <button class="icon-btn" id="btnMenu" type="button">Menu</button>
+  </header>
+  <main id="table">
+    <div class="watermark" id="wm"></div>
+    <div class="seal-box" id="sealBox"></div>
+    <div class="seat n mate" id="seat2"></div>
+    <div class="meter" id="meter"></div>
+    <div class="seat w" id="seat3"></div>
+    <div class="center" id="center"></div>
+    <div class="seat e" id="seat1"></div>
+  </main>
+  <section id="dock">
+    <div id="bar"><div id="status"></div><div class="btns" id="btns"></div></div>
+    <div id="hand" aria-label="Your hand"></div>
+  </section>
+</div>
+<div id="toast" aria-live="polite"></div>
+<div id="modalRoot"></div>
+
+<script>
+/*ENGINE*/
+</script>
+<script>
+(function () {
+'use strict';
+const T = window.TR;
+const $ = (id) => document.getElementById(id);
+const SAVE_KEY = 'tractor3.save.v1';
+const SEAT_POS = ['s', 'e', 'n', 'w'];
+const GLYPH = ['你', '俊', '梅', '林'];
+const S = { G: null, sel: new Set(), speed: 'normal', showLast: false, err: '', timer: null, lastPlusAt: 0, plus: 0, stampTrump: false, modal: null, lastDropKey: '' };
+
+const delay = () => (S.speed === 'fast' ? 330 : 750);
+const pauseTrick = () => (S.speed === 'fast' ? 900 : 1500);
+const DEAL_MS = 85;
+
+function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ G: S.G, speed: S.speed })); } catch (e) {} }
+function load() { try { const v = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); return v && v.G ? v : null; } catch (e) { return null; } }
+if (window.claude && window.claude.hot && window.claude.hot.snapshot) window.claude.hot.snapshot(() => ({ G: S.G, speed: S.speed }));
+
+function toast(msg) {
+  const el = document.createElement('div'); el.className = 'toast'; el.textContent = msg;
+  $('toast').appendChild(el);
+  setTimeout(() => el.remove(), 2600);
+  while ($('toast').children.length > 3) $('toast').firstChild.remove();
+}
+const nm = (s) => T.NAMES[s];
+const teamName = (t) => (t === 0 ? 'Us' : 'Them');
+const rankTxt = (r) => T.RANK_TXT[r];
+
+function cardHTML(c, x, cls = '') {
+  const red = c.s === 1 || c.s === 3 || (c.s === 4 && c.r === 14);
+  let k = 'card' + (red ? ' red' : '') + (cls ? ' ' + cls : '');
+  if (x && x.trump !== -2 && T.isTrump(c, x)) k += ' trump';
+  if (x && c.s !== 4 && c.r === x.level) k += ' lvl';
+  if (c.s === 4) {
+    const big = c.r === 14;
+    return `<div class="${k} jk" data-id="${c.id}" title="${big ? 'Big' : 'Small'} joker"><span class="r">${big ? '大' : '小'}</span><span class="s">王</span><span class="pip">${big ? '★' : '☆'}</span>${cls.includes('kit') ? '<i class="dot"></i>' : ''}</div>`;
+  }
+  return `<div class="${k}" data-id="${c.id}" title="${T.cardText(c)}"><span class="r">${rankTxt(c.r)}</span><span class="s">${T.SUIT_SYM[c.s]}</span><span class="pip">${T.SUIT_SYM[c.s]}</span>${cls.includes('kit') ? '<i class="dot"></i>' : ''}</div>`;
+}
+const miniRow = (cards, x) => `<div class="row">${T.sortHand(cards, x).map((c) => cardHTML(c, x, 'mini')).join('')}</div>`;
+
+function describePlay(cards, x) {
+  const c = T.classify(cards, x);
+  if (!c) return `${cards.length} cards`;
+  const su = c.suit === 'T' ? 'trump' : T.SUIT_SYM[c.suit];
+  return `${c.k === 1 && c.w === 1 ? 'a single' : 'a ' + T.shapeName(c)} of ${su}`;
+}
+
+/* ---------------- render ---------------- */
+function render() {
+  const G = S.G; if (!G) return;
+  const x = T.ctx(G);
+  const known = x.trump !== -2;
+  const dTeam = G.dealer === null ? null : T.team(G.dealer);
+
+  // score
+  $('score').innerHTML = [0, 1].map((t) => `<div class="chip ${t === 0 ? 'us' : ''}">${teamName(t)} <strong>${rankTxt(G.levels[t])}</strong>${dTeam === t ? '<span class="zh" title="Dealer team">庄</span>' : ''}</div>`).join('');
+  $('wm').textContent = rankTxt(G.level);
+
+  // seal
+  let seal;
+  if (!known) seal = `<div class="seal none"><span class="sym">?</span></div><div class="seal-txt"><strong>Level ${rankTxt(G.level)}</strong>Trump not declared</div>`;
+  else {
+    const sym = x.trump === -1 ? '无' : T.SUIT_SYM[x.trump];
+    const desc = x.trump === -1 ? 'No trump suit' : `${T.SUIT_NAME[x.trump][0].toUpperCase() + T.SUIT_NAME[x.trump].slice(1)} are trump`;
+    const final = G.trump !== null;
+    seal = `<div class="seal ${S.stampTrump ? 'stamp' : ''}" style="${final ? '' : 'opacity:.75'}"><span class="sym" style="${x.trump === -1 ? 'font-family:var(--display)' : ''}">${sym}</span><span class="zh">主</span></div><div class="seal-txt"><strong>Level ${rankTxt(G.level)}</strong>${desc}</div>`;
+  }
+  $('sealBox').innerHTML = seal; S.stampTrump = false;
+
+  // meter
+  if (G.dealer === null) $('meter').innerHTML = `<div class="lbl">Hand ${G.handNo}</div><div class="num" style="font-size:18px">First to declare deals</div>`;
+  else {
+    const aTeam = 1 - dTeam;
+    const plus = Date.now() - S.lastPlusAt < 1500 && S.plus ? ` <span class="plus">+${S.plus}</span>` : '';
+    $('meter').innerHTML = `<div class="lbl">${teamName(aTeam)} attacking${plus}</div><div class="num">${G.points}<small> / ${T.THRESHOLD}</small></div><div class="bar"><i style="width:${Math.min(100, (G.points / T.THRESHOLD) * 100)}%"></i></div>`;
+  }
+
+  // seats
+  const turn = G.phase === 'play' && G.trick && G.trick.plays.length < 4 ? T.turnSeat(G) : -1;
+  for (const s of [1, 2, 3]) {
+    const el = $('seat' + s);
+    el.classList.toggle('turn', turn === s);
+    const n = G.hands[s].length;
+    const b = [];
+    if (G.dealer === s) b.push('<span class="badge dealer"><span class="lg">Dealer </span>庄</span>');
+    if (G.decl && G.decl.seat === s && G.phase !== 'play') b.push(`<span class="badge decl">${T.declText(G.decl)}</span>`);
+    b.push(`<span class="badge">${n}<span class="lg"> cards</span></span>`);
+    el.innerHTML = `<div class="avatar">${GLYPH[s]}</div><div class="nm">${nm(s)}</div><div class="role">${s === 2 ? 'Your partner' : 'Opponent'}</div><div class="badges">${b.join('')}</div>`;
+  }
+
+  renderCenter(G, x);
+  renderHand(G, x);
+  renderBar(G, x);
+  $('btnLast').classList.toggle('on', S.showLast);
+  $('btnLast').setAttribute('aria-pressed', String(S.showLast));
+  $('btnLast').disabled = !G.lastTrick;
+  renderModal();
+}
+
+function renderCenter(G, x) {
+  const c = $('center');
+  if (G.phase === 'deal') {
+    const dealt = G.hands[0].length;
+    const who = G.decl ? `${nm(G.decl.seat)} declared ${T.declText(G.decl)}` : (G.dealer === null ? 'First player to declare becomes dealer' : `${nm(G.dealer)} deals this hand`);
+    c.innerHTML = `<div class="center-note"><div><span class="big">${dealt < T.HAND ? '发牌' : '亮主'}</span>${dealt < T.HAND ? `Dealing ${dealt} of ${T.HAND}` : 'Last call to declare'}<br>${who}</div></div>`;
+    return;
+  }
+  if (G.phase === 'bury') {
+    c.innerHTML = `<div class="center-note"><div><span class="big">埋底</span>${G.dealer === 0 ? 'Your kitty: pick 6 cards to bury' : `${nm(G.dealer)} is burying 6 cards`}</div></div>`;
+    return;
+  }
+  const tr = S.showLast && G.lastTrick ? G.lastTrick : (G.trick && G.trick.plays.length ? G.trick : null);
+  if (!tr) {
+    const lead = G.trick ? G.trick.leader : 0;
+    c.innerHTML = `<div class="center-note"><div>${lead === 0 ? 'Your lead' : `${nm(lead)} to lead`}</div></div>`;
+    return;
+  }
+  const plays = tr.plays;
+  const done = plays.length === 4 || tr === G.lastTrick;
+  const wi = T.trickWinner(plays, x);
+  const winSeat = plays[wi].seat;
+  let h = '';
+  plays.forEach((p, i) => {
+    const pos = SEAT_POS[p.seat];
+    const isNew = !S.showLast && i === plays.length - 1;
+    const key = G.handNo + ':' + G.played.length + ':' + p.seat;
+    const drop = isNew && S.lastDropKey !== key;
+    if (drop) S.lastDropKey = key;
+    const tag = p.seat === 0 ? 'You' : nm(p.seat);
+    h += `<div class="slot ${pos} ${winSeat === p.seat ? 'win' : ''} ${drop ? 'drop' : ''}">${pos === 's' ? '' : `<div class="tag">${tag}${i === 0 ? ' · led' : ''}</div>`}${miniRow(p.cards, x)}${pos === 's' ? `<div class="tag">You${i === 0 ? ' · led' : ''}</div>` : ''}</div>`;
+  });
+  if (S.showLast) h += `<div class="center-note"><div>Last trick · ${nm(winSeat)} won${G.lastTrick.points ? ` · ${G.lastTrick.points} pts` : ''}</div></div>`;
+  else if (done) {
+    const pts = T.sumPts(plays.flatMap((p) => p.cards));
+    h += `<div class="center-note"><div>${winSeat === 0 ? 'You win' : nm(winSeat) + ' wins'}${pts ? ` · ${pts} pts` : ''}</div></div>`;
+  }
+  c.innerHTML = h;
+}
+
+function renderHand(G, x) {
+  const hand = T.sortHand(G.hands[0], x);
+  const kit = G.phase === 'bury' && G.dealer === 0 && G.kittyShown ? new Set(G.kittyShown.map((c) => c.id)) : null;
+  const groups = [];
+  let cur = null, curKey = null;
+  for (const c of hand) {
+    const k = x.trump === -2 ? (c.s === 4 || c.r === x.level ? 'T' : c.s) : T.esuit(c, x);
+    if (k !== curKey) { cur = []; groups.push(cur); curKey = k; }
+    cur.push(c);
+  }
+  $('hand').innerHTML = groups.map((g) => `<div class="grp">${g.map((c) => cardHTML(c, x, (S.sel.has(c.id) ? 'sel' : '') + (kit && kit.has(c.id) ? ' kit' : ''))).join('')}</div>`).join('');
+}
+
+function myTurn(G) { return G.phase === 'play' && G.trick.plays.length < 4 && T.turnSeat(G) === 0; }
+function selCards(G) { return G.hands[0].filter((c) => S.sel.has(c.id)); }
+
+function renderBar(G, x) {
+  let st = '', bt = '';
+  if (G.phase === 'deal') {
+    const opts = T.declOptions(G, 0);
+    const done = G.dealIdx >= T.DEALT;
+    if (G.decl) st = G.decl.seat === 0 ? `<strong>You declared ${T.declText(G.decl)}.</strong> Others can overcall with more copies.` : `<strong>${nm(G.decl.seat)} declared ${T.declText(G.decl)}.</strong> ${opts.length ? 'You can overcall.' : ''}`;
+    else st = opts.length ? `<strong>You hold a ${rankTxt(G.level)}.</strong> Show it to make its suit trump.` : `Watch for a <strong>${rankTxt(G.level)}</strong>: showing one names trump.`;
+    if (G.dealer === null && !G.decl) st += ' Whoever declares first deals and takes the kitty.';
+    bt = opts.map((o, i) => `<button class="btn seal-btn" type="button" data-decl="${i}">${o.joker ? `No trump · ${o.count} ${o.joker === 'BJ' ? '大王' : '小王'}` : `Declare ${T.SUIT_SYM[o.suit]}${o.count > 1 ? ' ×' + o.count : ''}`}</button>`).join('');
+    if (done) bt += `<button class="btn primary" type="button" id="bStart">Start hand</button>`;
+  } else if (G.phase === 'bury') {
+    if (G.dealer === 0) {
+      const n = S.sel.size;
+      st = `<strong>You took the kitty</strong> (gold dots). Pick 6 cards to bury. ${n}/6 picked. If the other team wins the last trick, they score buried points ×2 or more.`;
+      bt = `<button class="btn" type="button" id="bHint">Suggest</button><button class="btn primary" type="button" id="bBury" ${n === 6 ? '' : 'disabled'}>Bury 6</button>`;
+    } else st = `${nm(G.dealer)} took the kitty and is burying 6 cards.`;
+  } else if (G.phase === 'play') {
+    if (myTurn(G)) {
+      const lead = T.leadCls(G);
+      const sel = selCards(G);
+      const v = sel.length ? T.checkPlay(G, 0, sel) : null;
+      if (!lead) st = `<strong>Your lead.</strong> Play a single, pair, triple, or tractor.`;
+      else st = `<strong>Your turn.</strong> ${nm(G.trick.plays[0].seat)} led ${describePlay(G.trick.plays[0].cards, x)}: play ${lead.w * lead.k} card${lead.w * lead.k > 1 ? 's' : ''}.`;
+      if (S.err) st += ` <span class="err">${S.err}</span>`;
+      else if (v && !v.ok && (!lead || sel.length === lead.w * lead.k)) st += ` <span class="err">${v.msg}</span>`;
+      bt = `<button class="btn" type="button" id="bClear" ${sel.length ? '' : 'disabled'}>Clear</button><button class="btn" type="button" id="bHint">Hint</button><button class="btn primary" type="button" id="bPlay" ${v && v.ok ? '' : 'disabled'}>Play</button>`;
+    } else if (G.trick.plays.length === 4) st = 'Trick complete.';
+    else st = `${nm(T.turnSeat(G))} is thinking…`;
+  } else if (G.phase === 'handEnd' || G.phase === 'gameOver') {
+    st = G.phase === 'gameOver' ? `<strong>Game over.</strong>` : `<strong>Hand ${G.handNo} finished.</strong>`;
+    bt = `<button class="btn primary" type="button" id="bResult">See result</button>`;
+  }
+  $('status').innerHTML = st;
+  $('btns').innerHTML = bt;
+}
+
+/* ---------------- modals ---------------- */
+function renderModal() {
+  const root = $('modalRoot');
+  const G = S.G;
+  let m = S.modal;
+  if (!m && (G.phase === 'handEnd' || G.phase === 'gameOver') && !S.resultDismissed) m = 'result';
+  if (!m) { root.innerHTML = ''; return; }
+  let h = '';
+  if (m === 'rules') h = rulesHTML();
+  else if (m === 'menu') h = `<h2>Menu</h2><div class="menu-list">
+      <button class="btn" type="button" data-act="rules">How to play &amp; house rules</button>
+      <button class="btn" type="button" data-act="speed">Computer speed: ${S.speed === 'fast' ? 'Fast' : 'Normal'} (tap to change)</button>
+      <button class="btn" type="button" data-act="history">Score history</button>
+      <button class="btn" type="button" data-act="new">Start a new game</button></div>
+      <div class="acts"><button class="btn primary" type="button" data-act="close">Back to the table</button></div>`;
+  else if (m === 'confirmNew') h = `<h2>Start over?</h2><p>This ends the current game. Levels go back to 2 for both teams.</p><div class="acts"><button class="btn" type="button" data-act="close">Keep playing</button><button class="btn primary" type="button" data-act="newyes">New game</button></div>`;
+  else if (m === 'history') h = historyHTML(G);
+  else if (m === 'result') h = resultHTML(G);
+  root.innerHTML = `<div class="modal" role="dialog" aria-modal="true"><div class="sheet">${h}</div></div>`;
+}
+function historyHTML(G) {
+  const rows = G.history.slice().reverse().map((r) => `<tr><td>Hand ${r.hand} · ${nm(r.dealer)} dealt at ${rankTxt(r.level)}</td><td>${r.points} pts → ${teamName(r.winTeam)}${r.up ? ' +' + r.up : ''}${r.swap ? ' (take deal)' : ''}</td></tr>`).join('');
+  return `<h2>Score history</h2>${rows ? `<table>${rows}</table>` : '<p>No hands finished yet.</p>'}<div class="acts"><button class="btn primary" type="button" data-act="close">Close</button></div>`;
+}
+function resultHTML(G) {
+  const R = G.result; const x = T.ctx(G);
+  const us = R.winTeam === 0;
+  let head, line;
+  const tp = (t) => (t === 0 ? 'you and Mei' : 'Jun and Lin'); const cap = (z) => z[0].toUpperCase() + z.slice(1);
+  const aName = cap(tp(1 - R.dealerTeam)), dName = cap(tp(R.dealerTeam)), dLow = tp(R.dealerTeam);
+  if (G.phase === 'gameOver') { head = G.winner === 0 ? '赢了! You win the game' : 'They won this game'; line = `${cap(tp(G.winner))} defended the deal at Ace.`; }
+  else if (R.swap) { head = us ? 'You take the deal' : 'They take the deal'; line = `${aName} reached ${R.points} points (needed ${T.THRESHOLD})${R.up ? ` and go up ${R.up} level${R.up > 1 ? 's' : ''}` : ''}. ${nm(G.nextDealer)} deals next.`; }
+  else { head = us ? 'You held the deal' : 'They held the deal'; line = `${aName} only reached ${R.points} of ${T.THRESHOLD}, so ${dLow} go up ${R.up} level${R.up > 1 ? 's' : ''}. ${nm(G.nextDealer)} deals next.`; }
+  const kit = `<div class="kitrow">${T.sortHand(R.buried, x).map((c) => cardHTML(c, x, 'mini')).join('')}</div>`;
+  const bonus = R.mult ? `${aName} won the last trick, so the kitty's ${R.kittyPts} pts count ×${R.mult} = <strong>${R.bonus}</strong>.` : `${dName} won the last trick, so the kitty's ${R.kittyPts} pts stay safe.`;
+  const lv = (t) => `<div class="lv ${t === 0 ? 'us' : ''}"><div class="t">${t === 0 ? 'Us · You & Mei' : 'Them · Jun & Lin'}</div><div class="v">${rankTxt(R.levelAfter[t])}${R.levelAfter[t] !== R.levelBefore[t] ? `<small>from ${rankTxt(R.levelBefore[t])}</small>` : ''}</div></div>`;
+  return `<h2>${head}</h2><p>${line}</p>
+    <h3>Buried kitty</h3>${kit}<p>${bonus}</p>
+    <table><tr><td>Points from tricks</td><td>${R.points - R.bonus}</td></tr><tr><td>Kitty bonus</td><td>${R.bonus}</td></tr><tr><td>${aName} total</td><td>${R.points}</td></tr></table>
+    <div class="levels">${lv(0)}${lv(1)}</div>
+    <div class="acts"><button class="btn" type="button" data-act="peek">Look at the table</button>${G.phase === 'gameOver' ? '<button class="btn primary" type="button" data-act="newyes">New game</button>' : '<button class="btn primary" type="button" data-act="next">Deal next hand</button>'}</div>`;
+}
+function rulesHTML() {
+  return `<h2>Tractor 拖拉机</h2>
+  <p>You and Mei (across from you) play against Jun and Lin. Each hand, one team deals and defends; the other team attacks and tries to capture points. Teams climb from 2 to Ace.</p>
+  <h3>Your table's 3-deck rules</h3>
+  <ul><li>Three full decks with jokers: 162 cards. Everyone gets 39; the last 6 are the kitty.</li>
+  <li>While dealing, show a card of the current level (the "wild" level card) to make its suit trump. Two or three of the same level card overcall one. Two or more of the same joker overcall a suit and make it no-trump.</li>
+  <li>The dealer picks up the kitty and buries any 6 cards. In the first hand, whoever declares trump becomes the dealer.</li>
+  <li>If nobody declares, the highest card in the kitty names trump.</li></ul>
+  <h3>Trump order (high to low)</h3>
+  <p>Big joker 大王, small joker 小王, level card of the trump suit, level cards of the other suits, then A, K, Q… of the trump suit. Trump cards in your hand have a gold edge.</p>
+  <h3>Playing</h3>
+  <ul><li>The dealer leads first. Lead a single, a pair (2 identical cards), a triple (3 identical cards), or a tractor: two or more back-to-back pairs or triples in one suit, like 5♠5♠6♠6♠. The level rank is skipped, so with 7 as level, 6-6-8-8 is a tractor.</li>
+  <li>Others play the same number of cards. You must follow suit, and must match the shape when you can: a pair if you have a pair, a tractor if you have one, otherwise as many pairs or triples as you hold.</li>
+  <li>If you're out of the suit led, play anything. Trumps of the same shape win the trick.</li>
+  <li>The highest card of the suit led wins, unless trumped. Ties go to whoever played first. The winner leads next.</li></ul>
+  <h3>Scoring</h3>
+  <ul><li>5s are worth 5; 10s and Ks are worth 10. There are 300 points in the 3 decks.</li>
+  <li>Attackers need ${T.THRESHOLD} to take the deal, and go up one level for every ${T.STEP} beyond that (180, 240, 300).</li>
+  <li>If the attackers fall short, the defenders go up: 1 level at 60–115, 2 levels at 5–55, 3 levels for a shutout.</li>
+  <li>If the attackers win the last trick, the buried kitty points count ×2 (single), ×4 (pair), ×6 (triple), or ×8 (tractor).</li>
+  <li>You can't skip Ace: a team at Ace has to defend successfully as dealers to win the game.</li></ul>
+  <h3>Not in this version</h3>
+  <p>Throwing several top combinations at once (甩牌) isn't supported. Lead them one at a time.</p>
+  <div class="acts"><button class="btn primary" type="button" data-act="close">Got it</button></div>`;
+}
+
+/* ---------------- flow ---------------- */
+function commit() { save(); render(); schedule(); }
+function npcDeclareRound(final) {
+  const G = S.G;
+  for (const s of [1, 2, 3].sort(() => Math.random() - 0.5)) {
+    const o = T.AI.declare(G, s, final);
+    if (o) {
+      const over = !!G.decl;
+      T.declare(G, o); S.stampTrump = true;
+      toast(`${nm(s)} ${over ? 'overcalls with' : 'declares'} ${T.declText(G.decl)}`);
+      if (final) break;
+    }
+  }
+}
+function schedule() {
+  clearTimeout(S.timer);
+  const G = S.G; if (!G || S.modal) return;
+  if (G.phase === 'deal') {
+    if (G.dealIdx < T.DEALT) S.timer = setTimeout(() => { T.dealRound(G); npcDeclareRound(false); commit(); }, DEAL_MS);
+    return;
+  }
+  if (G.phase === 'bury' && G.dealer !== 0) {
+    S.timer = setTimeout(() => { T.bury(G, T.AI.bury(G)); toast(`${nm(G.dealer)} buried 6 cards`); commit(); }, delay() * 1.6);
+    return;
+  }
+  if (G.phase === 'play') {
+    if (G.trick.plays.length === 4) {
+      S.timer = setTimeout(() => {
+        const before = G.points;
+        const w = T.resolveTrick(G);
+        if (G.points > before) { S.plus = G.points - before; S.lastPlusAt = Date.now(); }
+        if (G.phase !== 'play') S.resultDismissed = false;
+        commit();
+      }, pauseTrick());
+      return;
+    }
+    const s = T.turnSeat(G);
+    if (s !== 0) S.timer = setTimeout(() => { T.playCards(G, s, T.AI.play(G, s)); S.showLast = false; commit(); }, delay());
+  }
+}
+
+function startHandClicked() {
+  const G = S.G;
+  if (!G.decl) npcDeclareRound(true);
+  const hadDecl = !!G.decl;
+  T.finishDeclare(G);
+  S.stampTrump = true;
+  const x = T.ctx(G);
+  const tn = G.trump === -1 ? 'No trump' : `${T.SUIT_SYM[G.trump]} trump`;
+  if (!hadDecl) toast(`Nobody declared. Kitty flipped ${T.cardText(G.flipped)}: ${tn}`);
+  else toast(`${tn} · ${nm(G.dealer)} takes the kitty`);
+  S.sel.clear();
+  commit();
+}
+
+document.addEventListener('click', (e) => {
+  const G = S.G;
+  const card = e.target.closest('#hand .card');
+  if (card) {
+    if (G.phase === 'bury' && G.dealer === 0 || myTurn(G)) {
+      const id = +card.dataset.id;
+      if (S.sel.has(id)) S.sel.delete(id); else {
+        if (G.phase === 'bury' && S.sel.size >= 6) { S.err = ''; toast('You already picked 6. Tap one to unpick it.'); return; }
+        S.sel.add(id);
+      }
+      S.err = '';
+      render();
+    }
+    return;
+  }
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.decl !== undefined) {
+    const o = T.declOptions(G, 0)[+b.dataset.decl];
+    if (o) { T.declare(G, o); S.stampTrump = true; toast(`You declare ${T.declText(G.decl)}`); commit(); }
+    return;
+  }
+  if (b.dataset.act) return modalAct(b.dataset.act);
+  switch (b.id) {
+    case 'bStart': startHandClicked(); break;
+    case 'bBury': if (S.sel.size === 6) { T.bury(G, [...S.sel]); S.sel.clear(); toast('Kitty buried. You lead.'); commit(); } break;
+    case 'bHint':
+      if (G.phase === 'bury') { S.sel = new Set(T.AI.bury(G)); render(); }
+      else if (myTurn(G)) { S.sel = new Set(T.AI.play(G, 0).map((c) => c.id)); S.err = ''; render(); }
+      break;
+    case 'bClear': S.sel.clear(); S.err = ''; render(); break;
+    case 'bPlay': {
+      const cards = selCards(G); const v = T.checkPlay(G, 0, cards);
+      if (!v.ok) { S.err = v.msg; render(); break; }
+      T.playCards(G, 0, cards); S.sel.clear(); S.err = ''; S.showLast = false; commit(); break;
+    }
+    case 'bResult': S.resultDismissed = false; render(); break;
+    case 'btnLast': S.showLast = !S.showLast; render(); break;
+    case 'btnMenu': S.modal = 'menu'; render(); break;
+  }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && S.modal) { modalAct('close'); }
+  if (e.key === 'Enter' && myTurn(S.G) && !S.modal) { const p = $('bPlay'); if (p && !p.disabled) p.click(); }
+});
+function modalAct(a) {
+  const G = S.G;
+  if (a === 'close') { S.modal = null; render(); schedule(); }
+  else if (a === 'rules') { S.modal = 'rules'; render(); }
+  else if (a === 'history') { S.modal = 'history'; render(); }
+  else if (a === 'speed') { S.speed = S.speed === 'fast' ? 'normal' : 'fast'; save(); render(); }
+  else if (a === 'new') { S.modal = 'confirmNew'; render(); }
+  else if (a === 'newyes') { S.G = T.newGame(); S.modal = null; S.sel.clear(); S.showLast = false; S.resultDismissed = false; toast('New game: both teams start at 2'); commit(); }
+  else if (a === 'peek') { S.resultDismissed = true; S.showLast = true; render(); }
+  else if (a === 'next') { T.nextHand(G); S.resultDismissed = false; S.showLast = false; S.sel.clear(); commit(); }
+}
+
+function start(snap) {
+  const saved = (snap && snap.G) ? snap : load();
+  if (saved) { S.G = saved.G; S.speed = saved.speed || 'normal'; }
+  else { S.G = T.newGame(); S.modal = 'rules'; }
+  render(); schedule();
+}
+if (window.claude && window.claude.hot && window.claude.hot.ready) window.claude.hot.ready(start);
+else start((window.claude && window.claude.hot && window.claude.hot.data) || {});
+})();
+</script>
+</body>
+</html>
