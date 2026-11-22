@@ -469,7 +469,7 @@ function renderModal() {
   root.innerHTML = `<div class="modal" role="dialog" aria-modal="true"><div class="sheet">${h}</div></div>`;
 }
 function historyHTML(G) {
-  const rows = G.history.slice().reverse().map((r) => `<tr><td>Hand ${r.hand} · ${nm(r.dealer)} dealt at ${rankTxt(r.level)}</td><td>${r.points} pts → ${teamName(r.winTeam)}${r.up ? ' +' + r.up : ''}${r.swap ? ' (take deal)' : ''}</td></tr>`).join('');
+  const rows = G.history.slice().reverse().map((r) => `<tr><td>Hand ${r.hand} · ${nm(r.dealer)} dealt at ${rankTxt(r.level)}</td><td>${r.points} pts → ${teamName(r.winTeam)}${r.up ? ' +' + r.up : ''}${r.swap ? ' (take deal)' : ''}${r.jackDrop !== undefined ? ` · ${teamName(r.jackDrop)} back to 2` : ''}</td></tr>`).join('');
   return `<h2>Score history</h2>${rows ? `<table>${rows}</table>` : '<p>No hands finished yet.</p>'}<div class="acts"><button class="btn primary" type="button" data-act="close">Close</button></div>`;
 }
 function resultHTML(G) {
@@ -481,6 +481,7 @@ function resultHTML(G) {
   if (G.phase === 'gameOver') { head = G.winner === 0 ? '赢了! You win the game' : 'They won this game'; line = `${cap(tp(G.winner))} defended the deal at Ace.`; }
   else if (R.swap) { head = us ? 'You take the deal' : 'They take the deal'; line = `${aName} reached ${R.points} points (needed ${T.THRESHOLD})${R.up ? ` and go up ${R.up} level${R.up > 1 ? 's' : ''}` : ''}. ${nm(G.nextDealer)} deals next.`; }
   else { head = us ? 'You held the deal' : 'They held the deal'; line = `${aName} only reached ${R.points} of ${T.THRESHOLD}, so ${dLow} go up ${R.up} level${R.up > 1 ? 's' : ''}. ${nm(G.nextDealer)} deals next.`; }
+  if (R.jackDrop !== undefined) line += ` <strong>Jack rule:</strong> ${cap(tp(R.jackDrop))} were on J and ${dLow} won the last trick with Jacks, so ${tp(R.jackDrop)} drop back to 2.`;
   const kit = `<div class="kitrow">${T.sortHand(R.buried, x).map((c) => cardHTML(c, x, 'mini')).join('')}</div>`;
   const bonus = R.mult ? `${aName} won the last trick, so the kitty's ${R.kittyPts} pts count ×${R.mult} = <strong>${R.bonus}</strong>.` : `${dName} won the last trick, so the kitty's ${R.kittyPts} pts stay safe.`;
   const lv = (t) => `<div class="lv ${t === 0 ? 'us' : ''}"><div class="t">${t === 0 ? 'Us · You & Mei' : 'Them · Jun & Lin'}</div><div class="v">${rankTxt(R.levelAfter[t])}${R.levelAfter[t] !== R.levelBefore[t] ? `<small>from ${rankTxt(R.levelBefore[t])}</small>` : ''}</div></div>`;
@@ -513,7 +514,8 @@ function rulesHTML() {
   <li>Attackers need ${T.THRESHOLD} to take the deal, and go up one level for every ${T.STEP} beyond that (180, 240, 300).</li>
   <li>If the attackers fall short, the defenders go up: 1 level at 60–115, 2 levels at 5–55, 3 levels for a shutout.</li>
   <li>If the attackers win the last trick, the buried kitty points count ×2 (single), ×4 (pair), ×6 (triple), or ×8 (tractor).</li>
-  <li>You can't skip Ace: a team at Ace has to defend successfully as dealers to win the game.</li></ul>
+  <li>You can't skip Jack or Ace. A team that would jump past J stops at J and has to play it. A team at Ace has to defend successfully as dealers to win the game.</li>
+  <li><strong>Jack rule:</strong> if the point-scoring team is on J, falls short of 120, and the dealers win the last trick with a Jack or pairs/triples of Jacks (any suit), the point-scoring team drops back to 2.</li></ul>
   <h3>Throwing 甩牌</h3>
   <ul><li>When you lead, you can play several combinations of one suit at once, like your whole remaining suit when you think nobody else can beat it. Select them all and tap <strong>Throw</strong>.</li>
   <li>If any other player could beat any piece of it, the throw fails: you take the rest back and play only the smallest piece they could beat.</li>

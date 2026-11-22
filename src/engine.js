@@ -9,6 +9,7 @@ const TOTAL_POINTS = 100 * NDECKS;          // 300
 const THRESHOLD = 40 * NDECKS;              // 120 to take the deal
 const STEP = 20 * NDECKS;                   // 60 per level
 const NAMES = ['You', 'Jun', 'Mei', 'Lin'];
+const JACK = 9; // rank index of J
 
 function makeDeck() {
   const d = []; let id = 0;
@@ -414,11 +415,17 @@ function resolveTrick(G) {
   const attackers = team(winner) !== team(G.dealer);
   if (attackers && p) { G.points += p; G.pointCards.push(...all.filter((c) => pts(c))); }
   G.lastTrick = { plays, winner, points: p };
-  if (G.hands.every((h) => h.length === 0)) { endHand(G, winner, leadDesc(plays[0].cards, x)); return winner; }
+  if (G.hands.every((h) => h.length === 0)) { endHand(G, winner, leadDesc(plays[0].cards, x), plays[wi].cards); return winner; }
   G.trick = { leader: winner, plays: [] };
   return winner;
 }
-function endHand(G, lastWinner, lastLead) {
+/* Levels can't skip J (it must be played) or go past A */
+function raise(level, up) {
+  let n = level + up;
+  if (level < JACK && n > JACK) n = JACK;
+  return Math.min(12, n);
+}
+function endHand(G, lastWinner, lastLead, lastWinCards) {
   const dTeam = team(G.dealer), aTeam = 1 - dTeam;
   const kittyPts = sumPts(G.buried);
   let mult = 0, bonus = 0;
@@ -433,17 +440,22 @@ function endHand(G, lastWinner, lastLead) {
     const up = p === 0 ? 3 : p < STEP ? 2 : 1;
     R.winTeam = dTeam; R.up = up; R.swap = false;
     if (G.levels[dTeam] === 12) { G.winner = dTeam; }
-    else G.levels[dTeam] = Math.min(12, G.levels[dTeam] + up);
+    else G.levels[dTeam] = raise(G.levels[dTeam], up);
+    // Jack rule: point-scoring team sitting on J misses 120 and the dealers take the last trick with Jacks only -> back to 2
+    if (G.levels[aTeam] === JACK && team(lastWinner) === dTeam && lastWinCards && lastWinCards.length && lastWinCards.every((c) => c.s !== 4 && c.r === JACK)) {
+      G.levels[aTeam] = 0; R.jackDrop = aTeam;
+    }
     G.nextDealer = partnerOf(G.dealer);
   } else {
     const up = Math.floor((p - THRESHOLD) / STEP);
     R.winTeam = aTeam; R.up = up; R.swap = true;
-    G.levels[aTeam] = Math.min(12, G.levels[aTeam] + up);
+    G.levels[aTeam] = raise(G.levels[aTeam], up);
     G.nextDealer = (G.dealer + 1) % 4;
   }
+  if (G.winner === null) R.up = Math.max(0, G.levels[R.winTeam] - R.levelBefore[R.winTeam]); // after J/A caps
   R.levelAfter = G.levels.slice();
   G.result = R;
-  G.history.push({ hand: G.handNo, dealer: G.dealer, level: G.level, points: p, winTeam: R.winTeam, up: R.up, swap: R.swap });
+  G.history.push({ hand: G.handNo, dealer: G.dealer, level: G.level, points: p, winTeam: R.winTeam, up: R.up, swap: R.swap, jackDrop: R.jackDrop });
   G.phase = G.winner !== null ? 'gameOver' : 'handEnd';
 }
 function nextHand(G) { startHand(G); }
@@ -471,6 +483,27 @@ function isBoss(unit, x, unseen) {
   }
   return true;
 }
+function trumpsOut(unseen, x) {
+  let n = 0;
+  for (const id of IDS) if (isTrump(id, x)) n += Math.max(0, unseen.get(ckey(id)) || 0);
+  return n;
+}
+const jackThreat = (G, seat) => team(seat) === team(G.dealer) && G.levels[1 - team(G.dealer)] === JACK;
+/* Cards worth saving for the last trick: best trump pair + best trump single (and Jacks under the Jack rule) */
+function reserveFor(G, seat, x) {
+  const hand = G.hands[seat], res = new Set();
+  if (hand.length > 12) return res;
+  const tr = hand.filter((c) => isTrump(c, x));
+  if (tr.length < hand.length - 1) {
+    const pairs = findUnits(tr, 2, 1, x).sort((a, b) => classify(b, x).top - classify(a, x).top);
+    if (pairs.length) pairs[0].forEach((c) => res.add(c.id));
+    const singles = tr.filter((c) => !res.has(c.id)).sort((a, b) => ov(b, x) - ov(a, x));
+    if (singles.length) res.add(singles[0].id);
+  }
+  if (jackThreat(G, seat)) hand.filter((c) => c.s !== 4 && c.r === JACK).forEach((c) => res.add(c.id));
+  return res;
+}
+const withRes = (key, res) => (c) => key(c) + (res.has(c.id) ? 100 : 0);
 const lowKey = (x) => (c) => (isTrump(c, x) ? 40 : 0) + ov(c, x) + pts(c) * 1.2;
 const pointsKey = (x) => (c) => (isTrump(c, x) ? 40 : 0) - pts(c) * 3 + ov(c, x) * 0.2;
 const sumKey = (cs, f) => cs.reduce((a, c) => a + f(c), 0);
@@ -575,6 +608,9 @@ const AI = {
     const x = ctx(G);
     let h = G.hands[G.burier].slice();
     const out = [];
+    const attacker = team(G.burier) !== team(G.dealer); // attackers want points in the kitty (×2+ if they win the last trick)
+    const trN = h.filter((c) => isTrump(c, x)).length;
+    const ptW = attacker ? 1.5 : trN < 14 ? -5 : -2.5;
     for (let i = 0; i < KITTY; i++) {
       const len = [0, 0, 0, 0];
       for (const c of h) if (!isTrump(c, x)) len[c.s]++;
@@ -585,7 +621,7 @@ const AI = {
         let s;
         if (isTrump(c, x)) s = -200 - ov(c, x);
         else {
-          s = -ov(c, x) - pts(c) * 2.5;
+          s = -ov(c, x) + pts(c) * ptW;
           if (cnt.get(ckey(c)) >= 2) s -= 40;
           if (c.r === 12) s -= 50;
           if (len[c.s] <= 5) s += (8 - len[c.s]) * 4;
@@ -605,6 +641,10 @@ const AI = {
     const dealerTeam = team(seat) === team(G.dealer);
     const trumps = hand.filter((c) => isTrump(c, x)).length;
     const frac = trumps / hand.length;
+    const res = reserveFor(G, seat, x);
+    const tOut = trumpsOut(unseen, x);
+    const oppNoTrump = opp.every((o) => G.voids[o][4]);
+    const endgame = hand.length <= 12;
     const bySuit = new Map();
     for (const c of hand) { const su = esuit(c, x); if (!bySuit.has(su)) bySuit.set(su, []); bySuit.get(su).push(c); }
     let best = null, bs = -1e9;
@@ -621,7 +661,8 @@ const AI = {
         const boss = comps.filter((q) => isBoss(q.cards, x, unseen));
         if (boss.length >= 2) {
           const u = boss.flatMap((q) => q.cards);
-          const s = (su === 'T' ? 60 : 115) + u.length * 8 + (boss.length === comps.length ? 10 : 0) + Math.random() * 3;
+          let s = (su === 'T' ? 60 : 115) + u.length * 8 + (boss.length === comps.length ? 10 : 0) + Math.random() * 3;
+          if (u.some((c) => res.has(c.id)) && u.length < hand.length) s -= 60;
           if (s > bs) { bs = s; best = u; }
         }
       }
@@ -630,12 +671,14 @@ const AI = {
         const boss = isBoss(u, x, unseen);
         let s;
         if (su !== 'T') {
-          if (boss) { s = 100 + size * 10 + p * 2; if (oppVoid) s -= 95; }
+          if (boss) { s = 100 + size * 10 + p * 2 + (endgame ? 15 : 0); if (oppVoid && tOut > 0) s -= 95; }
           else s = 20 + size * 3 - c.top * 1.2 - p * 3 + (Hs.length <= 3 && size === 1 ? 6 : 0) + (pVoid && !oppVoid ? 25 : 0) - (oppVoid ? 10 : 0);
         } else {
           if (boss) s = (dealerTeam || frac > 0.45 ? 70 : 35) + size * 10;
-          else s = (frac > 0.5 ? 25 : 2) + size * 3 - c.top - p * 3;
+          else s = (frac > 0.5 ? 25 : 2) + size * 3 - c.top - p * 3 + (dealerTeam && tOut > 6 && frac > 0.35 ? 10 : 0);
+          if (oppNoTrump && trumps < hand.length) s -= 50; // nobody left to pull trumps from
         }
+        if (u.some((q) => res.has(q.id)) && u.length < hand.length) s -= 60; // save it for the last trick
         s += Math.random() * 3;
         if (s > bs) { bs = s; best = u; }
       }
@@ -645,8 +688,9 @@ const AI = {
   follow(G, seat) {
     const x = ctx(G), hand = G.hands[seat], plays = G.trick.plays;
     const lead = leadDesc(plays[0].cards, x);
-    const low = constructFollow(hand, lead, x, lowKey(x));
-    const dump = constructFollow(hand, lead, x, pointsKey(x));
+    const res = reserveFor(G, seat, x);
+    const low = constructFollow(hand, lead, x, withRes(lowKey(x), res));
+    const dump = constructFollow(hand, lead, x, withRes(pointsKey(x), res));
     const bi = trickWinner(plays, x);
     const bestSeat = plays[bi].seat;
     const bestC = classify(plays[bi].cards, x) || { suit: bi === 0 ? lead.suit : 'T' };
@@ -656,20 +700,32 @@ const AI = {
     const tp = sumPts(plays.flatMap((p) => p.cards));
     const unseen = unseenFor(G, seat);
     const si = suitIdx(lead.suit);
-    if (bestSeat === partnerOf(seat)) {
-      const ruffRisk = lead.suit !== 'T' && bestC.suit !== 'T' && remOpp.some((o) => G.voids[o][si]);
-      const safe = remOpp.length === 0 || (isBoss(plays[bi].cards, x, unseen) && !ruffRisk);
-      return safe ? dump : low;
+    const lastTrick = hand.length === lead.N; // this trick decides the kitty bonus
+    const rk = withRes(lowKey(x), res);
+    const wins = winCandidates(G, seat).sort((a, b) => sumKey(a, rk) - sumKey(b, rk));
+    const ruffRiskOf = (cards) => lead.suit !== 'T' && !cards.every((c) => isTrump(c, x)) && remOpp.some((o) => G.voids[o][si]);
+    const safeOf = (cards) => remOpp.length === 0 || (isBoss(cards, x, unseen) && !ruffRiskOf(cards));
+    if (lastTrick && jackThreat(G, seat) && wins.length) {
+      const jw = wins.find((u) => u.every((c) => c.s !== 4 && c.r === JACK));
+      if (jw && safeOf(jw)) return jw;
     }
-    const wins = winCandidates(G, seat);
+    if (bestSeat === partnerOf(seat)) {
+      if (safeOf(plays[bi].cards)) return dump;
+      // partner may get beaten: overtake with a sure winner when it matters
+      if (lastTrick || tp >= 10) { const sure = wins.find((u) => safeOf(u)); if (sure) return sure; }
+      return low;
+    }
     if (wins.length) {
       const w0 = wins[0];
       const ruff = lead.suit !== 'T' && w0.every((c) => isTrump(c, x));
       const wc = classify(w0, x) || { top: mainTop(decompose(w0, x)) };
-      const pricey = w0.some((c) => c.s === 4 || c.r === G.level) || (ruff && wc.top >= 9);
-      const boss = isBoss(w0, x, unseen) && !(ruff && remOpp.some((o) => G.voids[o][si]));
+      const usesRes = w0.some((c) => res.has(c.id));
+      const pricey = usesRes || w0.some((c) => c.s === 4 || c.r === G.level) || (ruff && wc.top >= 9);
+      const boss = safeOf(w0);
       let take;
-      if (remOpp.length === 0) take = tp + sumPts(w0) > 0 || !pricey;
+      if (lastTrick) take = true;
+      else if (usesRes) take = tp >= 20 && boss;
+      else if (remOpp.length === 0) take = tp + sumPts(w0) > 0 || !pricey;
       else if (boss) take = tp >= 5 || !pricey;
       else take = tp >= 10;
       if (take) return w0;
@@ -687,7 +743,7 @@ function sortHand(cards, x) {
 const API = {
   SUIT_SYM, SUIT_NAME, RANK_TXT, NAMES, NDECKS, KITTY, HAND, DEALT, TOTAL_POINTS, THRESHOLD, STEP,
   makeDeck, shuffle, team, partnerOf, isTrump, esuit, ov, pts, sumPts, ckey, cardText, suitLabel, classify, shapeName,
-  findUnits, decompose, leadDesc, throwCheck, validateLead, validateFollow, trickWinner, ctx, newGame, startHand, dealRound, declOptions, declare, declText,
+  JACK, raise, findUnits, decompose, leadDesc, throwCheck, validateLead, validateFollow, trickWinner, ctx, newGame, startHand, dealRound, declOptions, declare, declText,
   finishDeclare, afterDeal, chaodiAct, finishChaodi, bury, turnSeat, leadCls, checkPlay, playCards, resolveTrick, nextHand, AI, constructFollow, sortHand, lowKey, pointsKey,
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.TR = API;
