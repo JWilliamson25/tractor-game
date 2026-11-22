@@ -249,6 +249,7 @@ function startHand(G) {
   G.burier = null; G.cd = null;
   G.points = 0; G.pointCards = [];
   G.played = [];
+  G.playedBy = [[], [], [], []]; // each player's pile this hand
   G.voids = [0, 1, 2, 3].map(() => [false, false, false, false, false]);
   G.trick = null; G.lastTrick = null; G.result = null;
   G.phase = 'deal';
@@ -403,6 +404,8 @@ function playCards(G, seat, cards) {
   G.hands[seat] = G.hands[seat].filter((c) => !ids.includes(c.id));
   G.trick.plays.push({ seat, cards });
   for (const c of cards) G.played.push(ckey(c));
+  if (!G.playedBy) G.playedBy = [[], [], [], []];
+  G.playedBy[seat].push(...cards);
   return G.trick.plays.length === 4;
 }
 function resolveTrick(G) {
@@ -743,7 +746,7 @@ function sortHand(cards, x) {
 const API = {
   SUIT_SYM, SUIT_NAME, RANK_TXT, NAMES, NDECKS, KITTY, HAND, DEALT, TOTAL_POINTS, THRESHOLD, STEP,
   makeDeck, shuffle, team, partnerOf, isTrump, esuit, ov, pts, sumPts, ckey, cardText, suitLabel, classify, shapeName,
-  JACK, raise, findUnits, decompose, leadDesc, throwCheck, validateLead, validateFollow, trickWinner, ctx, newGame, startHand, dealRound, declOptions, declare, declText,
+  JACK, raise, unseenFor, IDS, findUnits, decompose, leadDesc, throwCheck, validateLead, validateFollow, trickWinner, ctx, newGame, startHand, dealRound, declOptions, declare, declText,
   finishDeclare, afterDeal, chaodiAct, finishChaodi, bury, turnSeat, leadCls, checkPlay, playCards, resolveTrick, nextHand, AI, constructFollow, sortHand, lowKey, pointsKey,
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.TR = API;
