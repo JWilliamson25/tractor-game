@@ -1,7 +1,7 @@
 /* Tractor (拖拉机 / Sheng Ji) — 3 decks, 4 players, 39 cards each + 6-card kitty */
 (function (root) {
 'use strict';
-const SUIT_SYM = ['♠', '♥', '♣', '♦'];
+const SUIT_SYM = ['♠\uFE0E', '♥\uFE0E', '♣\uFE0E', '♦\uFE0E']; // text style, not emoji
 const SUIT_NAME = ['spades', 'hearts', 'clubs', 'diamonds'];
 const RANK_TXT = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 const NDECKS = 3, KITTY = 6, HAND = 39, DEALT = HAND * 4;
@@ -70,8 +70,8 @@ function shapeName(c) {
 }
 
 /* All units of exactly shape (w,k) that can be cut from `cards` (assumed one suit) */
-function findUnits(cards, w, k, x) {
-  const g = groupCards(cards, x).filter((q) => q.n >= w);
+function findUnits(cards, w, k, x, exact) {
+  const g = groupCards(cards, x).filter((q) => (exact ? q.n === w : q.n >= w));
   if (k === 1) return g.map((q) => q.cards.slice(0, w));
   const byOv = new Map();
   for (const q of g) { if (!byOv.has(q.ov)) byOv.set(q.ov, []); byOv.get(q.ov).push(q); }
@@ -93,37 +93,95 @@ function countPT(cards, x) {
   return { T, P };
 }
 
+/* Split one suit's cards into combinations: longest tractors first, then triples, pairs, singles */
+function decompose(cards, x) {
+  const g = groupCards(cards, x).map((q) => ({ ov: q.ov, n: q.n, cards: q.cards.slice() }));
+  const comps = [];
+  for (const w of [3, 2]) {
+    for (;;) {
+      const avail = g.filter((q) => q.n >= w).sort((a, b) => a.ov - b.ov);
+      let best = null, run = [];
+      for (const q of avail) {
+        if (run.length && run[run.length - 1].ov === q.ov) continue;
+        if (run.length && run[run.length - 1].ov + 1 !== q.ov) run = [];
+        run.push(q);
+        if (run.length >= 2 && (!best || run.length > best.length)) best = run.slice();
+      }
+      if (!best) break;
+      const cs = [];
+      for (const q of best) { cs.push(...q.cards.splice(0, w)); q.n -= w; }
+      comps.push({ w, k: best.length, top: best[best.length - 1].ov, cards: cs });
+    }
+  }
+  for (const q of g) if (q.n > 0) comps.push({ w: q.n, k: 1, top: q.ov, cards: q.cards.splice(0, q.n) });
+  comps.sort((a, b) => b.w * b.k - a.w * a.k || b.w - a.w || a.top - b.top);
+  return comps;
+}
+const sigOf = (comps) => comps.map((c) => c.w + 'x' + c.k).sort().join(',');
+const mainTop = (comps) => { const m = comps[0]; let t = -1; for (const c of comps) if (c.w * c.k === m.w * m.k && c.w === m.w) t = Math.max(t, c.top); return t; };
+/* Describe a lead. A throw (甩牌) is several combinations of one suit led together. */
+function leadDesc(cards, x) {
+  const c = classify(cards, x);
+  if (c) return Object.assign({}, c, { N: cards.length, throw: false, comps: [Object.assign({}, c, { cards })] });
+  if (!cards.length) return null;
+  const su = esuit(cards[0], x);
+  if (cards.some((q) => esuit(q, x) !== su)) return null;
+  const comps = decompose(cards, x);
+  return { suit: su, N: cards.length, throw: true, comps, w: 0, k: 0, top: mainTop(comps) };
+}
+function unitNeed(lead) {
+  if (lead.throw) {
+    let T = 0, P = 0;
+    for (const c of lead.comps) { if (c.w === 3) T += c.k; else if (c.w === 2) P += c.k; }
+    return { T, P };
+  }
+  return lead.w === 3 ? { T: lead.k, P: 0 } : lead.w === 2 ? { T: 0, P: lead.k } : { T: 0, P: 0 };
+}
+/* Can any other player beat a piece of this throw? Returns the piece the thrower must play instead. */
+function throwCheck(G, seat, cards) {
+  const x = ctx(G);
+  const d = leadDesc(cards, x);
+  let fail = null;
+  for (const comp of d.comps) {
+    for (let o = 0; o < 4; o++) {
+      if (o === seat) continue;
+      const Hs = G.hands[o].filter((c) => esuit(c, x) === d.suit);
+      if (findUnits(Hs, comp.w, comp.k, x).some((u) => classify(u, x).top > comp.top)) {
+        if (!fail || comp.top < fail.comp.top || (comp.top === fail.comp.top && comp.cards.length < fail.comp.cards.length)) fail = { comp, by: o };
+        break;
+      }
+    }
+  }
+  return fail ? { forced: fail.comp.cards, by: fail.by } : null;
+}
+
 function validateLead(play, x) {
   if (!play.length) return { ok: false, msg: 'Pick cards to lead.' };
   const c = classify(play, x);
-  if (!c) return { ok: false, msg: 'Lead a single, pair, triple, or tractor (back-to-back pairs or triples in one suit).' };
-  return { ok: true, cls: c };
+  if (c) return { ok: true, cls: c };
+  if (play.every((q) => esuit(q, x) === esuit(play[0], x))) return { ok: true, throw: true };
+  return { ok: false, msg: 'Everything you lead has to be from one suit (trumps count as one suit).' };
 }
 
 function validateFollow(play, hand, lead, x) {
-  const N = lead.w * lead.k;
+  const N = lead.N;
   if (play.length !== N) return { ok: false, msg: `Play ${N} card${N > 1 ? 's' : ''} to match the lead.` };
   const Hs = hand.filter((c) => esuit(c, x) === lead.suit);
   const Ps = play.filter((c) => esuit(c, x) === lead.suit);
   const sn = suitLabel(lead.suit);
   if (Hs.length >= N) {
     if (Ps.length !== N) return { ok: false, msg: `You still have ${sn}, so you have to follow with ${sn}.` };
-    if (lead.w >= 2) {
-      if (findUnits(Hs, lead.w, lead.k, x).length) {
-        const c = classify(play, x);
-        if (!c || c.w !== lead.w || c.k !== lead.k) return { ok: false, msg: `You hold a matching ${shapeName(lead)} in ${sn}, so you have to play it.` };
-      } else {
-        const H = countPT(Hs, x), P = countPT(play, x);
-        if (lead.w === 2) {
-          const req = Math.min(lead.k, H.P + H.T);
-          if (P.P + P.T < req) return { ok: false, msg: `You have to include ${req} pair${req > 1 ? 's' : ''} of ${sn} when you hold them.` };
-        } else {
-          const t = Math.min(lead.k, H.T);
-          const preq = Math.min(lead.k - t, H.P + H.T - t);
-          if (P.T < t) return { ok: false, msg: `You have to include ${t} triple${t > 1 ? 's' : ''} of ${sn} when you hold them.` };
-          if (P.P + P.T - t < preq) return { ok: false, msg: `You have to include ${preq} pair${preq > 1 ? 's' : ''} of ${sn} when you hold them.` };
-        }
-      }
+    // House rule: a pair you owe never has to come out of a three-of-a-kind (exact pairs only).
+    if (!lead.throw && lead.w >= 2 && findUnits(Hs, lead.w, lead.k, x, true).length) {
+      const c = classify(play, x);
+      if (!c || c.w !== lead.w || c.k !== lead.k) return { ok: false, msg: `You hold a matching ${shapeName(lead)} in ${sn}, so you have to play it.` };
+    } else if (lead.throw || lead.w >= 2) {
+      const need = unitNeed(lead);
+      const H = countPT(Hs, x), P = countPT(play, x);
+      const t = Math.min(need.T, H.T);
+      const preq = Math.min(need.P + need.T - t, H.P);
+      if (P.T < t) return { ok: false, msg: `You have to include ${t} triple${t > 1 ? 's' : ''} of ${sn} when you hold them.` };
+      if (P.P + P.T - t < preq) return { ok: false, msg: `You have to include ${preq} pair${preq > 1 ? 's' : ''} of ${sn} when you hold them.` };
     }
   } else if (Ps.length !== Hs.length) {
     return { ok: false, msg: `Play all your ${sn} first, then fill in with other cards.` };
@@ -133,6 +191,21 @@ function validateFollow(play, hand, lead, x) {
 
 /* index into plays of the current winner */
 function trickWinner(plays, x) {
+  const ld = leadDesc(plays[0].cards, x);
+  if (ld.throw) {
+    if (ld.suit === 'T') return 0;
+    const sig = sigOf(ld.comps);
+    let best = 0, bt = -1;
+    for (let i = 1; i < plays.length; i++) {
+      const p = plays[i].cards;
+      if (p.some((c) => !isTrump(c, x))) continue;
+      const d = decompose(p, x);
+      if (sigOf(d) !== sig) continue;
+      const t = mainTop(d);
+      if (t > bt) { best = i; bt = t; }
+    }
+    return best;
+  }
   const lead = classify(plays[0].cards, x);
   let best = 0, bestC = lead;
   for (let i = 1; i < plays.length; i++) {
@@ -171,6 +244,8 @@ function startHand(G) {
   G.kitty = G.deck.slice(DEALT);
   G.buried = [];
   G.decl = null; G.trump = null; G.flipped = null;
+  G.chaodi = G.dealer !== null; // from hand 2: kitty goes around the table
+  G.burier = null; G.cd = null;
   G.points = 0; G.pointCards = [];
   G.played = [];
   G.voids = [0, 1, 2, 3].map(() => [false, false, false, false, false]);
@@ -241,18 +316,68 @@ function finishDeclare(G) {
   G.hands[G.dealer].push(...G.kitty);
   G.kittyShown = G.kitty.slice();
   G.kitty = [];
+  G.burier = G.dealer;
   G.phase = 'bury';
 }
+/* After the deal. Hand 1: the highest declaration takes the kitty.
+   Later hands: the dealer picks up first, then the kitty goes around the table (炒地皮). */
+function afterDeal(G) {
+  if (!G.chaodi) return finishDeclare(G);
+  G.burier = G.dealer;
+  G.hands[G.dealer].push(...G.kitty);
+  G.kittyShown = G.kitty.slice();
+  G.kitty = [];
+  G.cd = { holder: G.dealer, turn: null, dealerOpen: true, log: [{ seat: G.dealer, text: 'picks up the kitty' }] };
+  G.phase = 'bury';
+}
+function chaodiAct(G, seat, o) {
+  if (o) {
+    declare(G, o);
+    G.cd.holder = seat;
+    G.burier = seat;
+    G.kittyShown = G.buried.slice();
+    G.hands[seat].push(...G.buried);
+    G.buried = [];
+    G.cd.log.push({ seat, text: `shows ${declText(G.decl)} and takes the kitty`, bid: true });
+    G.phase = 'bury';
+  } else {
+    G.cd.log.push({ seat, text: 'passes' });
+    G.cd.turn = (seat + 1) % 4;
+    if (G.cd.turn === G.cd.holder) finishChaodi(G);
+  }
+}
+function finishChaodi(G) {
+  if (G.decl) G.trump = G.decl.joker ? -1 : G.decl.suit;
+  else {
+    let top = G.buried[0];
+    for (const c of G.buried) if (c.r > top.r) top = c;
+    G.flipped = top;
+    G.trump = top.s === 4 ? -1 : top.s;
+  }
+  G.phase = 'play';
+  G.trick = { leader: G.dealer, plays: [] };
+}
 function bury(G, ids) {
-  const h = G.hands[G.dealer];
+  const b = G.burier;
+  const h = G.hands[b];
   if (ids.length !== KITTY) throw new Error('bury needs 6');
   G.buried = h.filter((c) => ids.includes(c.id));
-  G.hands[G.dealer] = h.filter((c) => !ids.includes(c.id));
+  G.hands[b] = h.filter((c) => !ids.includes(c.id));
+  if (G.chaodi) {
+    if (G.cd.dealerOpen) {
+      G.cd.dealerOpen = false;
+      if (G.decl) G.cd.log.push({ seat: b, text: `shows ${declText(G.decl)}`, bid: true });
+    }
+    G.cd.log.push({ seat: b, text: 'buries 6 cards' });
+    G.cd.turn = (b + 1) % 4;
+    G.phase = 'chaodi';
+    return;
+  }
   G.phase = 'play';
   G.trick = { leader: G.dealer, plays: [] };
 }
 function turnSeat(G) { return (G.trick.leader + G.trick.plays.length) % 4; }
-function leadCls(G) { return G.trick.plays.length ? classify(G.trick.plays[0].cards, ctx(G)) : null; }
+function leadCls(G) { return G.trick.plays.length ? leadDesc(G.trick.plays[0].cards, ctx(G)) : null; }
 
 function checkPlay(G, seat, cards) {
   const x = ctx(G);
@@ -263,6 +388,11 @@ function playCards(G, seat, cards) {
   const x = ctx(G);
   const v = checkPlay(G, seat, cards);
   if (!v.ok) throw new Error('illegal play by ' + seat + ': ' + v.msg + ' ' + cards.map(cardText).join(' '));
+  G.throwFail = null;
+  if (!G.trick.plays.length && v.throw) {
+    const f = throwCheck(G, seat, cards);
+    if (f) { G.throwFail = { seat, tried: cards, forced: f.forced, by: f.by }; cards = f.forced; }
+  }
   const ids = cards.map((c) => c.id);
   if (G.trick.plays.length) {
     const lead = leadCls(G);
@@ -284,7 +414,7 @@ function resolveTrick(G) {
   const attackers = team(winner) !== team(G.dealer);
   if (attackers && p) { G.points += p; G.pointCards.push(...all.filter((c) => pts(c))); }
   G.lastTrick = { plays, winner, points: p };
-  if (G.hands.every((h) => h.length === 0)) { endHand(G, winner, classify(plays[0].cards, x)); return winner; }
+  if (G.hands.every((h) => h.length === 0)) { endHand(G, winner, leadDesc(plays[0].cards, x)); return winner; }
   G.trick = { leader: winner, plays: [] };
   return winner;
 }
@@ -293,12 +423,12 @@ function endHand(G, lastWinner, lastLead) {
   const kittyPts = sumPts(G.buried);
   let mult = 0, bonus = 0;
   if (team(lastWinner) === aTeam) {
-    mult = lastLead.k >= 2 ? 8 : 2 * lastLead.w;
+    mult = lastLead.comps.some((c) => c.k >= 2) ? 8 : 2 * Math.max(...lastLead.comps.map((c) => c.w));
     bonus = kittyPts * mult;
     G.points += bonus;
   }
   const p = G.points;
-  const R = { points: p, kittyPts, mult, bonus, dealerTeam: dTeam, levelBefore: G.levels.slice(), dealer: G.dealer, buried: G.buried.slice() };
+  const R = { points: p, kittyPts, mult, bonus, dealerTeam: dTeam, levelBefore: G.levels.slice(), dealer: G.dealer, burier: G.burier, buried: G.buried.slice() };
   if (p < THRESHOLD) {
     const up = p === 0 ? 3 : p < STEP ? 2 : 1;
     R.winTeam = dTeam; R.up = up; R.swap = false;
@@ -329,12 +459,12 @@ function unseenFor(G, seat) {
   const sub = (k) => m.set(k, m.get(k) - 1);
   for (const c of G.hands[seat]) sub(ckey(c));
   for (const k of G.played) sub(k);
-  if (seat === G.dealer) for (const c of G.buried) sub(ckey(c));
+  if (seat === G.burier) for (const c of G.buried) sub(ckey(c));
   return m;
 }
 function isBoss(unit, x, unseen) {
   const c = classify(unit, x);
-  if (!c) return false;
+  if (!c) { const d = leadDesc(unit, x); return !!d && d.comps.every((q) => isBoss(q.cards, x, unseen)); }
   for (const id of IDS) {
     if ((unseen.get(ckey(id)) || 0) < c.w) continue;
     if (esuit(id, x) === c.suit && ov(id, x) > c.top) return false;
@@ -346,27 +476,28 @@ const pointsKey = (x) => (c) => (isTrump(c, x) ? 40 : 0) - pts(c) * 3 + ov(c, x)
 const sumKey = (cs, f) => cs.reduce((a, c) => a + f(c), 0);
 
 function constructFollow(hand, lead, x, key) {
-  const N = lead.w * lead.k;
+  const N = lead.N;
   const by = (a, b) => key(a) - key(b);
   const Hs = hand.filter((c) => esuit(c, x) === lead.suit).sort(by);
   const others = hand.filter((c) => esuit(c, x) !== lead.suit).sort(by);
   if (Hs.length <= N) { const p = Hs.slice(); for (const c of others) if (p.length < N) p.push(c); return p; }
-  if (lead.w === 1) return [Hs[0]];
-  const units = findUnits(Hs, lead.w, lead.k, x);
+  if (!lead.throw && lead.w === 1) return [Hs[0]];
+  const units = lead.throw ? [] : findUnits(Hs, lead.w, lead.k, x, true);
   if (units.length) { units.sort((a, b) => sumKey(a, key) - sumKey(b, key)); return units[0]; }
   let chosen = [], rest = Hs.slice();
   const take = (n, size) => {
     for (let t = 0; t < n; t++) {
-      const g = groupCards(rest, x).filter((q) => q.n >= size).map((q) => q.cards.slice(0, size));
+      const g = groupCards(rest, x).filter((q) => q.n === size).map((q) => q.cards.slice(0, size));
       if (!g.length) break;
       g.sort((a, b) => sumKey(a, key) - sumKey(b, key));
       chosen.push(...g[0]);
       rest = rest.filter((c) => !g[0].includes(c));
     }
   };
-  const H = countPT(Hs, x);
-  if (lead.w === 3) { const t = Math.min(lead.k, H.T); take(t, 3); take(Math.min(lead.k - t, H.P + H.T - t), 2); }
-  else take(Math.min(lead.k, H.P + H.T), 2);
+  const H = countPT(Hs, x), need = unitNeed(lead);
+  const t = Math.min(need.T, H.T);
+  take(t, 3);
+  take(Math.min(need.P + need.T - t, H.P), 2);
   rest.sort(by);
   for (const c of rest) if (chosen.length < N) chosen.push(c);
   return chosen;
@@ -374,11 +505,24 @@ function constructFollow(hand, lead, x, key) {
 
 function winCandidates(G, seat) {
   const x = ctx(G), hand = G.hands[seat], plays = G.trick.plays;
-  const lead = classify(plays[0].cards, x);
-  const best = classify(plays[trickWinner(plays, x)].cards, x);
-  const N = lead.w * lead.k;
+  const lead = leadDesc(plays[0].cards, x);
+  const N = lead.N;
   const Hs = hand.filter((c) => esuit(c, x) === lead.suit);
   const out = [];
+  if (lead.throw) {
+    if (Hs.length || lead.suit === 'T') return out;
+    let tr = hand.filter((c) => isTrump(c, x)); const pick = [];
+    const k0 = lowKey(x);
+    for (const comp of lead.comps) {
+      const u = findUnits(tr, comp.w, comp.k, x).sort((a, b) => sumKey(a, k0) - sumKey(b, k0))[0];
+      if (!u) return out;
+      pick.push(...u); tr = tr.filter((c) => !u.includes(c));
+    }
+    const sim = plays.concat([{ seat, cards: pick }]);
+    if (trickWinner(sim, x) === sim.length - 1 && validateFollow(pick, hand, lead, x).ok) out.push(pick);
+    return out;
+  }
+  const best = classify(plays[trickWinner(plays, x)].cards, x);
   if (Hs.length >= N) {
     if (best.suit === lead.suit) for (const u of findUnits(Hs, lead.w, lead.k, x)) { if (classify(u, x).top > best.top) out.push(u); }
   } else if (Hs.length === 0 && lead.suit !== 'T') {
@@ -408,9 +552,28 @@ const AI = {
     if (d >= 24 && br >= 0.32 && Math.random() < 0.25) return best;
     return null;
   },
+  dealerShow(G) {
+    const seat = G.burier;
+    const opts = declOptions(G, seat).filter((o) => !o.joker);
+    let best = null, br = -1;
+    for (const o of opts) { const r = AI.declRatio(G, seat, o); if (r > br) { br = r; best = o; } }
+    return best && br >= 0.27 ? best : null;
+  },
+  chaodi(G, seat) {
+    if (team(G.cd.holder) === team(seat) && G.decl) return null; // never steal from your own team
+    const opts = declOptions(G, seat).filter((o) => !o.joker);
+    if (!opts.length) return null;
+    let best = null, br = -1;
+    for (const o of opts) { const r = AI.declRatio(G, seat, o); if (r > br) { br = r; best = o; } }
+    if (!G.decl) return br >= 0.3 ? best : null;
+    const curR = G.decl.joker ? 0.2 : AI.declRatio(G, seat, { suit: G.decl.suit });
+    if (br >= 0.37) return best;
+    if (curR < 0.27 && br >= 0.32) return best;
+    return null;
+  },
   bury(G) {
     const x = ctx(G);
-    let h = G.hands[G.dealer].slice();
+    let h = G.hands[G.burier].slice();
     const out = [];
     for (let i = 0; i < KITTY; i++) {
       const len = [0, 0, 0, 0];
@@ -452,6 +615,16 @@ const AI = {
       const si = suitIdx(su);
       const oppVoid = opp.some((o) => G.voids[o][si]);
       const pVoid = G.voids[partner][si];
+      // throw (甩牌): every combination left in this suit is unbeatable, or at least two are
+      const comps = decompose(Hs, x);
+      if (comps.length >= 2 && !oppVoid) {
+        const boss = comps.filter((q) => isBoss(q.cards, x, unseen));
+        if (boss.length >= 2) {
+          const u = boss.flatMap((q) => q.cards);
+          const s = (su === 'T' ? 60 : 115) + u.length * 8 + (boss.length === comps.length ? 10 : 0) + Math.random() * 3;
+          if (s > bs) { bs = s; best = u; }
+        }
+      }
       for (const u of cands) {
         const c = classify(u, x), size = u.length, p = sumPts(u);
         const boss = isBoss(u, x, unseen);
@@ -471,12 +644,12 @@ const AI = {
   },
   follow(G, seat) {
     const x = ctx(G), hand = G.hands[seat], plays = G.trick.plays;
-    const lead = classify(plays[0].cards, x);
+    const lead = leadDesc(plays[0].cards, x);
     const low = constructFollow(hand, lead, x, lowKey(x));
     const dump = constructFollow(hand, lead, x, pointsKey(x));
     const bi = trickWinner(plays, x);
     const bestSeat = plays[bi].seat;
-    const bestC = classify(plays[bi].cards, x);
+    const bestC = classify(plays[bi].cards, x) || { suit: bi === 0 ? lead.suit : 'T' };
     const after = 3 - plays.length;
     const rem = []; for (let i = 1; i <= after; i++) rem.push((seat + i) % 4);
     const remOpp = rem.filter((s) => team(s) !== team(seat));
@@ -491,8 +664,8 @@ const AI = {
     const wins = winCandidates(G, seat);
     if (wins.length) {
       const w0 = wins[0];
-      const wc = classify(w0, x);
-      const ruff = wc.suit === 'T' && lead.suit !== 'T';
+      const ruff = lead.suit !== 'T' && w0.every((c) => isTrump(c, x));
+      const wc = classify(w0, x) || { top: mainTop(decompose(w0, x)) };
       const pricey = w0.some((c) => c.s === 4 || c.r === G.level) || (ruff && wc.top >= 9);
       const boss = isBoss(w0, x, unseen) && !(ruff && remOpp.some((o) => G.voids[o][si]));
       let take;
@@ -514,8 +687,8 @@ function sortHand(cards, x) {
 const API = {
   SUIT_SYM, SUIT_NAME, RANK_TXT, NAMES, NDECKS, KITTY, HAND, DEALT, TOTAL_POINTS, THRESHOLD, STEP,
   makeDeck, shuffle, team, partnerOf, isTrump, esuit, ov, pts, sumPts, ckey, cardText, suitLabel, classify, shapeName,
-  findUnits, validateLead, validateFollow, trickWinner, ctx, newGame, startHand, dealRound, declOptions, declare, declText,
-  finishDeclare, bury, turnSeat, leadCls, checkPlay, playCards, resolveTrick, nextHand, AI, constructFollow, sortHand, lowKey, pointsKey,
+  findUnits, decompose, leadDesc, throwCheck, validateLead, validateFollow, trickWinner, ctx, newGame, startHand, dealRound, declOptions, declare, declText,
+  finishDeclare, afterDeal, chaodiAct, finishChaodi, bury, turnSeat, leadCls, checkPlay, playCards, resolveTrick, nextHand, AI, constructFollow, sortHand, lowKey, pointsKey,
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.TR = API;
 })(this);

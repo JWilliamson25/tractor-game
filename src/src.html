@@ -28,7 +28,7 @@
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
-body { background: var(--rail); color: var(--ivory); font-family: var(--body); overflow: hidden; -webkit-tap-highlight-color: transparent; }
+body { font-variant-emoji: text; background: var(--rail); color: var(--ivory); font-family: var(--body); overflow: hidden; -webkit-tap-highlight-color: transparent; }
 button { font: inherit; color: inherit; cursor: pointer; }
 button:focus-visible, .card:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
@@ -108,6 +108,10 @@ header { display: flex; align-items: center; gap: 10px; padding: 8px 14px 6px; }
 @keyframes drop { from { transform: translateY(-10px) scale(1.05); opacity: 0; } to { transform: none; opacity: 1; } }
 .center-note { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 0 10px; pointer-events: none; }
 .center-note div { font-size: 14px; color: var(--mist); max-width: 30ch; }
+.center-note.cd > div { max-width: 34ch; }
+.cdlog { list-style: none; padding: 0; margin: 8px 0 4px; font-size: 13px; line-height: 1.5; color: var(--mist); }
+.cdlog li.bid { color: var(--gold); }
+.center-note .now { color: var(--ivory); font-weight: 600; font-size: 14px; }
 .center-note .big { font-family: var(--display); font-size: 34px; color: var(--ivory); display: block; margin-bottom: 4px; }
 
 /* cards */
@@ -234,15 +238,16 @@ const S = { G: null, sel: new Set(), speed: 'normal', showLast: false, err: '', 
 const delay = () => (S.speed === 'fast' ? 330 : 750);
 const pauseTrick = () => (S.speed === 'fast' ? 900 : 1500);
 const DEAL_MS = 85;
+const stepDelay = () => (S.speed === 'fast' ? 850 : 1700);
 
 function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ G: S.G, speed: S.speed })); } catch (e) {} }
 function load() { try { const v = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); return v && v.G ? v : null; } catch (e) { return null; } }
 if (window.claude && window.claude.hot && window.claude.hot.snapshot) window.claude.hot.snapshot(() => ({ G: S.G, speed: S.speed }));
 
-function toast(msg) {
+function toast(msg, ms = 2600) {
   const el = document.createElement('div'); el.className = 'toast'; el.textContent = msg;
   $('toast').appendChild(el);
-  setTimeout(() => el.remove(), 2600);
+  setTimeout(() => el.remove(), ms);
   while ($('toast').children.length > 3) $('toast').firstChild.remove();
 }
 const nm = (s) => T.NAMES[s];
@@ -260,11 +265,16 @@ function cardHTML(c, x, cls = '') {
   }
   return `<div class="${k}" data-id="${c.id}" title="${T.cardText(c)}"><span class="r">${rankTxt(c.r)}</span><span class="s">${T.SUIT_SYM[c.s]}</span><span class="pip">${T.SUIT_SYM[c.s]}</span>${cls.includes('kit') ? '<i class="dot"></i>' : ''}</div>`;
 }
+function declCards(d) {
+  const out = [];
+  for (let i = 0; i < d.count; i++) out.push(d.joker ? { id: -1 - i, s: 4, r: d.joker === 'BJ' ? 14 : 13 } : { id: -1 - i, s: d.suit, r: S.G.level });
+  return out;
+}
 const miniRow = (cards, x) => `<div class="row">${T.sortHand(cards, x).map((c) => cardHTML(c, x, 'mini')).join('')}</div>`;
 
 function describePlay(cards, x) {
   const c = T.classify(cards, x);
-  if (!c) return `${cards.length} cards`;
+  if (!c) { const d = T.leadDesc(cards, x); return d ? `a throw of ${cards.length} ${d.suit === 'T' ? 'trumps' : T.SUIT_SYM[d.suit]}` : `${cards.length} cards`; }
   const su = c.suit === 'T' ? 'trump' : T.SUIT_SYM[c.suit];
   return `${c.k === 1 && c.w === 1 ? 'a single' : 'a ' + T.shapeName(c)} of ${su}`;
 }
@@ -300,13 +310,16 @@ function render() {
   }
 
   // seats
-  const turn = G.phase === 'play' && G.trick && G.trick.plays.length < 4 ? T.turnSeat(G) : -1;
+  let turn = G.phase === 'play' && G.trick && G.trick.plays.length < 4 ? T.turnSeat(G) : -1;
+  if (G.phase === 'chaodi') turn = G.cd.turn;
+  if (G.phase === 'bury') turn = G.burier;
   for (const s of [1, 2, 3]) {
     const el = $('seat' + s);
     el.classList.toggle('turn', turn === s);
     const n = G.hands[s].length;
     const b = [];
     if (G.dealer === s) b.push('<span class="badge dealer"><span class="lg">Dealer </span>庄</span>');
+    if (G.chaodi && G.burier === s && (G.phase === 'chaodi' || G.phase === 'play')) b.push('<span class="badge" title="Holds the buried kitty">底<span class="lg"> kitty</span></span>');
     if (G.decl && G.decl.seat === s && G.phase !== 'play') b.push(`<span class="badge decl">${T.declText(G.decl)}</span>`);
     b.push(`<span class="badge">${n}<span class="lg"> cards</span></span>`);
     el.innerHTML = `<div class="avatar">${GLYPH[s]}</div><div class="nm">${nm(s)}</div><div class="role">${s === 2 ? 'Your partner' : 'Opponent'}</div><div class="badges">${b.join('')}</div>`;
@@ -329,8 +342,16 @@ function renderCenter(G, x) {
     c.innerHTML = `<div class="center-note"><div><span class="big">${dealt < T.HAND ? '发牌' : '亮主'}</span>${dealt < T.HAND ? `Dealing ${dealt} of ${T.HAND}` : 'Last call to declare'}<br>${who}</div></div>`;
     return;
   }
+  if (G.chaodi && (G.phase === 'bury' || G.phase === 'chaodi')) {
+    const who = (s) => (s === 0 ? 'You' : nm(s));
+    const shown = G.decl ? `<div class="kitrow" style="justify-content:center">${declCards(G.decl).map((c) => cardHTML(c, null, 'mini')).join('')}</div><div>${who(G.decl.seat)} ${G.decl.seat === 0 ? 'hold' : 'holds'} the high call: ${T.declText(G.decl)}</div>` : `<div>No one has shown a ${rankTxt(G.level)} yet</div>`;
+    const log = G.cd.log.slice(-4).map((l) => `<li${l.bid ? ' class="bid"' : ''}>${who(l.seat)} ${l.seat === 0 ? l.text.replace(/\b(passes|picks|shows|buries|takes)\b/g, (m) => ({ passes: 'pass', picks: 'pick', shows: 'show', buries: 'bury', takes: 'take' })[m]) : l.text}</li>`).join('');
+    const now = G.phase === 'bury' ? `${who(G.burier)} ${G.burier === 0 ? 'are' : 'is'} burying 6 cards` : (G.cd.turn === 0 ? 'Your turn: beat it or pass' : `${nm(G.cd.turn)} is deciding…`);
+    c.innerHTML = `<div class="center-note cd"><div><span class="big">炒底</span>${shown}<ul class="cdlog">${log}</ul><div class="now">${now}</div></div></div>`;
+    return;
+  }
   if (G.phase === 'bury') {
-    c.innerHTML = `<div class="center-note"><div><span class="big">埋底</span>${G.dealer === 0 ? 'Your kitty: pick 6 cards to bury' : `${nm(G.dealer)} is burying 6 cards`}</div></div>`;
+    c.innerHTML = `<div class="center-note"><div><span class="big">埋底</span>${G.burier === 0 ? 'Your kitty: pick 6 cards to bury' : `${nm(G.burier)} is burying 6 cards`}</div></div>`;
     return;
   }
   const tr = S.showLast && G.lastTrick ? G.lastTrick : (G.trick && G.trick.plays.length ? G.trick : null);
@@ -363,7 +384,7 @@ function renderCenter(G, x) {
 
 function renderHand(G, x) {
   const hand = T.sortHand(G.hands[0], x);
-  const kit = G.phase === 'bury' && G.dealer === 0 && G.kittyShown ? new Set(G.kittyShown.map((c) => c.id)) : null;
+  const kit = G.phase === 'bury' && G.burier === 0 && G.kittyShown ? new Set(G.kittyShown.map((c) => c.id)) : null;
   const groups = [];
   let cur = null, curKey = null;
   for (const c of hand) {
@@ -379,7 +400,9 @@ function selCards(G) { return G.hands[0].filter((c) => S.sel.has(c.id)); }
 
 function renderBar(G, x) {
   let st = '', bt = '';
-  if (G.phase === 'deal') {
+  if (G.phase === 'deal' && G.chaodi) {
+    st = `Dealing… <strong>${nm(G.dealer)} deals</strong> and picks up the kitty first. Then it goes around the table: show more ${rankTxt(G.level)}s or jokers to take it.`;
+  } else if (G.phase === 'deal') {
     const opts = T.declOptions(G, 0);
     const done = G.dealIdx >= T.DEALT;
     if (G.decl) st = G.decl.seat === 0 ? `<strong>You declared ${T.declText(G.decl)}.</strong> Others can overcall with more copies.` : `<strong>${nm(G.decl.seat)} declared ${T.declText(G.decl)}.</strong> ${opts.length ? 'You can overcall.' : ''}`;
@@ -388,21 +411,33 @@ function renderBar(G, x) {
     bt = opts.map((o, i) => `<button class="btn seal-btn" type="button" data-decl="${i}">${o.joker ? `No trump · ${o.count} ${o.joker === 'BJ' ? '大王' : '小王'}` : `Declare ${T.SUIT_SYM[o.suit]}${o.count > 1 ? ' ×' + o.count : ''}`}</button>`).join('');
     if (done) bt += `<button class="btn primary" type="button" id="bStart">Start hand</button>`;
   } else if (G.phase === 'bury') {
-    if (G.dealer === 0) {
+    if (G.burier === 0) {
       const n = S.sel.size;
-      st = `<strong>You took the kitty</strong> (gold dots). Pick 6 cards to bury. ${n}/6 picked. If the other team wins the last trick, they score buried points ×2 or more.`;
-      bt = `<button class="btn" type="button" id="bHint">Suggest</button><button class="btn primary" type="button" id="bBury" ${n === 6 ? '' : 'disabled'}>Bury 6</button>`;
-    } else st = `${nm(G.dealer)} took the kitty and is burying 6 cards.`;
+      st = `<strong>You took the kitty</strong> (gold dots). Pick 6 cards to bury. ${n}/6 picked.`;
+      if (G.chaodi && G.cd.dealerOpen) {
+        const opts = T.declOptions(G, 0);
+        st += G.decl ? ` You're showing ${T.declText(G.decl)}.` : (opts.length ? ` You can also show a ${rankTxt(G.level)} to name trump before you bury.` : '');
+        bt = opts.map((o, i) => `<button class="btn seal-btn" type="button" data-decl="${i}">${o.joker ? `No trump · ${o.count} ${o.joker === 'BJ' ? '大王' : '小王'}` : `Show ${T.SUIT_SYM[o.suit]}${o.count > 1 ? ' ×' + o.count : ''}`}</button>`).join('');
+      } else st += ' If the other team wins the last trick, they score buried points ×2 or more.';
+      bt = (bt || '') + `<button class="btn" type="button" id="bHint">Suggest</button><button class="btn primary" type="button" id="bBury" ${n === 6 ? '' : 'disabled'}>Bury 6</button>`;
+    } else st = `${nm(G.burier)} took the kitty and is burying 6 cards.`;
+  } else if (G.phase === 'chaodi') {
+    if (G.cd.turn === 0) {
+      const opts = T.declOptions(G, 0);
+      st = opts.length ? `<strong>Your turn.</strong> Show more to take the kitty and bury 6, or pass.` : `<strong>Your turn.</strong> You can't beat ${G.decl ? T.declText(G.decl) : 'the current call'}, so pass.`;
+      bt = opts.map((o, i) => `<button class="btn seal-btn" type="button" data-cd="${i}">${o.joker ? `No trump · ${o.count} ${o.joker === 'BJ' ? '大王' : '小王'}` : `Show ${T.SUIT_SYM[o.suit]}${o.count > 1 ? ' ×' + o.count : ''}`}</button>`).join('') + `<button class="btn primary" type="button" id="bPass">Pass</button>`;
+    } else st = `The kitty is going around. <strong>${nm(G.cd.turn)}</strong> is deciding whether to beat ${G.decl ? T.declText(G.decl) : 'it'}.`;
   } else if (G.phase === 'play') {
     if (myTurn(G)) {
       const lead = T.leadCls(G);
       const sel = selCards(G);
       const v = sel.length ? T.checkPlay(G, 0, sel) : null;
-      if (!lead) st = `<strong>Your lead.</strong> Play a single, pair, triple, or tractor.`;
-      else st = `<strong>Your turn.</strong> ${nm(G.trick.plays[0].seat)} led ${describePlay(G.trick.plays[0].cards, x)}: play ${lead.w * lead.k} card${lead.w * lead.k > 1 ? 's' : ''}.`;
+      if (!lead) st = `<strong>Your lead.</strong> Play a single, pair, triple, or tractor, or throw several combinations of one suit at once.`;
+      else st = `<strong>Your turn.</strong> ${nm(G.trick.plays[0].seat)} led ${describePlay(G.trick.plays[0].cards, x)}: play ${lead.N} card${lead.N > 1 ? 's' : ''}.`;
       if (S.err) st += ` <span class="err">${S.err}</span>`;
-      else if (v && !v.ok && (!lead || sel.length === lead.w * lead.k)) st += ` <span class="err">${v.msg}</span>`;
-      bt = `<button class="btn" type="button" id="bClear" ${sel.length ? '' : 'disabled'}>Clear</button><button class="btn" type="button" id="bHint">Hint</button><button class="btn primary" type="button" id="bPlay" ${v && v.ok ? '' : 'disabled'}>Play</button>`;
+      else if (v && !v.ok && (!lead || sel.length === lead.N)) st += ` <span class="err">${v.msg}</span>`;
+      else if (v && v.throw) st += ` <strong>Throw:</strong> if anyone can beat part of it, you'll only play the smallest piece they can beat.`;
+      bt = `<button class="btn" type="button" id="bClear" ${sel.length ? '' : 'disabled'}>Clear</button><button class="btn" type="button" id="bHint">Hint</button><button class="btn primary" type="button" id="bPlay" ${v && v.ok ? '' : 'disabled'}>${v && v.throw ? 'Throw ' + sel.length : 'Play'}</button>`;
     } else if (G.trick.plays.length === 4) st = 'Trick complete.';
     else st = `${nm(T.turnSeat(G))} is thinking…`;
   } else if (G.phase === 'handEnd' || G.phase === 'gameOver') {
@@ -450,7 +485,7 @@ function resultHTML(G) {
   const bonus = R.mult ? `${aName} won the last trick, so the kitty's ${R.kittyPts} pts count ×${R.mult} = <strong>${R.bonus}</strong>.` : `${dName} won the last trick, so the kitty's ${R.kittyPts} pts stay safe.`;
   const lv = (t) => `<div class="lv ${t === 0 ? 'us' : ''}"><div class="t">${t === 0 ? 'Us · You & Mei' : 'Them · Jun & Lin'}</div><div class="v">${rankTxt(R.levelAfter[t])}${R.levelAfter[t] !== R.levelBefore[t] ? `<small>from ${rankTxt(R.levelBefore[t])}</small>` : ''}</div></div>`;
   return `<h2>${head}</h2><p>${line}</p>
-    <h3>Buried kitty</h3>${kit}<p>${bonus}</p>
+    <h3>Buried kitty${R.burier !== undefined && R.burier !== null ? ` · buried by ${R.burier === 0 ? 'you' : nm(R.burier)}` : ''}</h3>${kit}<p>${bonus}</p>
     <table><tr><td>Points from tricks</td><td>${R.points - R.bonus}</td></tr><tr><td>Kitty bonus</td><td>${R.bonus}</td></tr><tr><td>${aName} total</td><td>${R.points}</td></tr></table>
     <div class="levels">${lv(0)}${lv(1)}</div>
     <div class="acts"><button class="btn" type="button" data-act="peek">Look at the table</button>${G.phase === 'gameOver' ? '<button class="btn primary" type="button" data-act="newyes">New game</button>' : '<button class="btn primary" type="button" data-act="next">Deal next hand</button>'}</div>`;
@@ -461,13 +496,16 @@ function rulesHTML() {
   <h3>Your table's 3-deck rules</h3>
   <ul><li>Three full decks with jokers: 162 cards. Everyone gets 39; the last 6 are the kitty.</li>
   <li>While dealing, show a card of the current level (the "wild" level card) to make its suit trump. Two or three of the same level card overcall one. Two or more of the same joker overcall a suit and make it no-trump.</li>
-  <li>The dealer picks up the kitty and buries any 6 cards. In the first hand, whoever declares trump becomes the dealer.</li>
-  <li>If nobody declares, the highest card in the kitty names trump.</li></ul>
+  <li><strong>First hand:</strong> show a level card during the deal to name trump. The highest call becomes the dealer, picks up the kitty, and buries any 6 cards.</li>
+  <li><strong>Every hand after that (炒底):</strong> the dealer picks up the kitty first, may show level cards, and buries 6. Then the kitty goes around the table. On your turn, show more level cards (or 2+ of the same joker) to take the kitty and bury 6 yourself, or pass. It ends when everyone else passes. The last call names trump.</li>
+  <li>Taking the kitty doesn't change teams: the dealer's team still defends, and the dealer leads first.</li>
+  <li>If nobody ever shows a level card, the highest buried card names trump.</li></ul>
   <h3>Trump order (high to low)</h3>
   <p>Big joker 大王, small joker 小王, level card of the trump suit, level cards of the other suits, then A, K, Q… of the trump suit. Trump cards in your hand have a gold edge.</p>
   <h3>Playing</h3>
   <ul><li>The dealer leads first. Lead a single, a pair (2 identical cards), a triple (3 identical cards), or a tractor: two or more back-to-back pairs or triples in one suit, like 5♠5♠6♠6♠. The level rank is skipped, so with 7 as level, 6-6-8-8 is a tractor.</li>
   <li>Others play the same number of cards. You must follow suit, and must match the shape when you can: a pair if you have a pair, a tractor if you have one, otherwise as many pairs or triples as you hold.</li>
+  <li><strong>House rule:</strong> you never have to split a three-of-a-kind to make a pair. If your only pair is inside a triple, you can keep the triple and play two other cards of that suit.</li>
   <li>If you're out of the suit led, play anything. Trumps of the same shape win the trick.</li>
   <li>The highest card of the suit led wins, unless trumped. Ties go to whoever played first. The winner leads next.</li></ul>
   <h3>Scoring</h3>
@@ -476,8 +514,10 @@ function rulesHTML() {
   <li>If the attackers fall short, the defenders go up: 1 level at 60–115, 2 levels at 5–55, 3 levels for a shutout.</li>
   <li>If the attackers win the last trick, the buried kitty points count ×2 (single), ×4 (pair), ×6 (triple), or ×8 (tractor).</li>
   <li>You can't skip Ace: a team at Ace has to defend successfully as dealers to win the game.</li></ul>
-  <h3>Not in this version</h3>
-  <p>Throwing several top combinations at once (甩牌) isn't supported. Lead them one at a time.</p>
+  <h3>Throwing 甩牌</h3>
+  <ul><li>When you lead, you can play several combinations of one suit at once, like your whole remaining suit when you think nobody else can beat it. Select them all and tap <strong>Throw</strong>.</li>
+  <li>If any other player could beat any piece of it, the throw fails: you take the rest back and play only the smallest piece they could beat.</li>
+  <li>Others must follow with the same number of cards, following suit and matching your pairs and triples as far as they can. Only a player out of that suit can beat a throw, by trumping it with the same mix of combinations.</li></ul>
   <div class="acts"><button class="btn primary" type="button" data-act="close">Got it</button></div>`;
 }
 
@@ -499,11 +539,29 @@ function schedule() {
   clearTimeout(S.timer);
   const G = S.G; if (!G || S.modal) return;
   if (G.phase === 'deal') {
-    if (G.dealIdx < T.DEALT) S.timer = setTimeout(() => { T.dealRound(G); npcDeclareRound(false); commit(); }, DEAL_MS);
+    if (G.dealIdx < T.DEALT) S.timer = setTimeout(() => { T.dealRound(G); if (!G.chaodi) npcDeclareRound(false); commit(); }, DEAL_MS);
+    else if (G.chaodi) S.timer = setTimeout(() => { T.afterDeal(G); S.sel.clear(); commit(); }, stepDelay());
     return;
   }
-  if (G.phase === 'bury' && G.dealer !== 0) {
-    S.timer = setTimeout(() => { T.bury(G, T.AI.bury(G)); toast(`${nm(G.dealer)} buried 6 cards`); commit(); }, delay() * 1.6);
+  if (G.phase === 'bury' && G.burier !== 0) {
+    S.timer = setTimeout(() => {
+      const b = G.burier;
+      if (G.chaodi && G.cd.dealerOpen) { const o = T.AI.dealerShow(G); if (o) { T.declare(G, o); S.stampTrump = true; } }
+      T.bury(G, T.AI.bury(G));
+      if (!G.chaodi) toast(`${nm(b)} buried 6 cards`);
+      commit();
+    }, stepDelay());
+    return;
+  }
+  if (G.phase === 'chaodi') {
+    const s = G.cd.turn;
+    if (s !== 0) S.timer = setTimeout(() => {
+      const o = T.AI.chaodi(G, s);
+      T.chaodiAct(G, s, o);
+      if (o) S.stampTrump = true;
+      afterChaodiStep();
+      commit();
+    }, stepDelay());
     return;
   }
   if (G.phase === 'play') {
@@ -518,15 +576,36 @@ function schedule() {
       return;
     }
     const s = T.turnSeat(G);
-    if (s !== 0) S.timer = setTimeout(() => { T.playCards(G, s, T.AI.play(G, s)); S.showLast = false; commit(); }, delay());
+    if (s !== 0) S.timer = setTimeout(() => {
+      const cards = T.AI.play(G, s);
+      const isThrow = !G.trick.plays.length && !T.classify(cards, T.ctx(G));
+      T.playCards(G, s, cards); S.showLast = false;
+      if (isThrow && !G.throwFail) toast(`${nm(s)} throws ${cards.length} cards nobody can beat`);
+      throwNote(); commit();
+    }, delay());
   }
 }
 
+function throwNote() {
+  const f = S.G.throwFail;
+  if (!f) return;
+  const x = T.ctx(S.G);
+  const who = f.seat === 0 ? 'Your' : nm(f.seat) + "'s";
+  toast(`${who} throw failed: ${nm(f.by)} can beat ${f.forced.map(T.cardText).join(' ')}, so only that is played.`, 4500);
+}
+function afterChaodiStep() {
+  const G = S.G;
+  if (G.phase !== 'play') return;
+  S.stampTrump = true;
+  const tn = G.trump === -1 ? 'no trump' : `${T.SUIT_SYM[G.trump]} trump`;
+  if (G.flipped) toast(`Nobody showed a ${rankTxt(G.level)}. Kitty card ${T.cardText(G.flipped)} sets ${tn}.`);
+  else toast(`Kitty round over: ${tn}. ${G.dealer === 0 ? 'You lead' : nm(G.dealer) + ' leads'}.`);
+}
 function startHandClicked() {
   const G = S.G;
   if (!G.decl) npcDeclareRound(true);
   const hadDecl = !!G.decl;
-  T.finishDeclare(G);
+  T.afterDeal(G);
   S.stampTrump = true;
   const x = T.ctx(G);
   const tn = G.trump === -1 ? 'No trump' : `${T.SUIT_SYM[G.trump]} trump`;
@@ -540,7 +619,7 @@ document.addEventListener('click', (e) => {
   const G = S.G;
   const card = e.target.closest('#hand .card');
   if (card) {
-    if (G.phase === 'bury' && G.dealer === 0 || myTurn(G)) {
+    if (G.phase === 'bury' && G.burier === 0 || myTurn(G)) {
       const id = +card.dataset.id;
       if (S.sel.has(id)) S.sel.delete(id); else {
         if (G.phase === 'bury' && S.sel.size >= 6) { S.err = ''; toast('You already picked 6. Tap one to unpick it.'); return; }
@@ -554,13 +633,19 @@ document.addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.decl !== undefined) {
     const o = T.declOptions(G, 0)[+b.dataset.decl];
-    if (o) { T.declare(G, o); S.stampTrump = true; toast(`You declare ${T.declText(G.decl)}`); commit(); }
+    if (o) { T.declare(G, o); S.stampTrump = true; toast(`You ${G.phase === 'bury' ? 'show' : 'declare'} ${T.declText(G.decl)}`); commit(); }
+    return;
+  }
+  if (b.dataset.cd !== undefined) {
+    const o = T.declOptions(G, 0)[+b.dataset.cd];
+    if (o && G.phase === 'chaodi' && G.cd.turn === 0) { T.chaodiAct(G, 0, o); S.stampTrump = true; S.sel.clear(); commit(); }
     return;
   }
   if (b.dataset.act) return modalAct(b.dataset.act);
   switch (b.id) {
     case 'bStart': startHandClicked(); break;
-    case 'bBury': if (S.sel.size === 6) { T.bury(G, [...S.sel]); S.sel.clear(); toast('Kitty buried. You lead.'); commit(); } break;
+    case 'bPass': if (G.phase === 'chaodi' && G.cd.turn === 0) { T.chaodiAct(G, 0, null); afterChaodiStep(); commit(); } break;
+    case 'bBury': if (S.sel.size === 6) { T.bury(G, [...S.sel]); S.sel.clear(); if (!G.chaodi) toast('Kitty buried. You lead.'); commit(); } break;
     case 'bHint':
       if (G.phase === 'bury') { S.sel = new Set(T.AI.bury(G)); render(); }
       else if (myTurn(G)) { S.sel = new Set(T.AI.play(G, 0).map((c) => c.id)); S.err = ''; render(); }
@@ -569,7 +654,7 @@ document.addEventListener('click', (e) => {
     case 'bPlay': {
       const cards = selCards(G); const v = T.checkPlay(G, 0, cards);
       if (!v.ok) { S.err = v.msg; render(); break; }
-      T.playCards(G, 0, cards); S.sel.clear(); S.err = ''; S.showLast = false; commit(); break;
+      T.playCards(G, 0, cards); S.sel.clear(); S.err = ''; S.showLast = false; throwNote(); commit(); break;
     }
     case 'bResult': S.resultDismissed = false; render(); break;
     case 'btnLast': S.showLast = !S.showLast; render(); break;
@@ -594,7 +679,7 @@ function modalAct(a) {
 
 function start(snap) {
   const saved = (snap && snap.G) ? snap : load();
-  if (saved) { S.G = saved.G; S.speed = saved.speed || 'normal'; }
+  if (saved) { S.G = saved.G; S.speed = saved.speed || 'normal'; if (S.G.burier === undefined) S.G.burier = S.G.dealer; if (S.G.chaodi === undefined) S.G.chaodi = false; }
   else { S.G = T.newGame(); S.modal = 'rules'; }
   render(); schedule();
 }

@@ -14,10 +14,15 @@ for (let it = 0; it < 4000; it++) {
   const leads = [];
   for (const s in bySuit) for (const w of [1, 2, 3]) for (let k = 1; k <= 3; k++) { if (w === 1 && k > 1) continue; leads.push(...T.findUnits(bySuit[s], w, k, x)); }
   if (!leads.length) continue;
-  const leadCards = leads[Math.floor(Math.random() * leads.length)];
-  const lead = T.classify(leadCards, x);
+  let leadCards = leads[Math.floor(Math.random() * leads.length)];
+  if (Math.random() < 0.35) { // random throw: several cards of one suit
+    const su = T.esuit(leadCards[0], x);
+    const pool = bySuit[su].filter(() => Math.random() < 0.5);
+    if (pool.length >= 2) leadCards = pool;
+  }
+  const lead = T.leadDesc(leadCards, x);
   if (!lead) { fail('unit not classifiable'); continue; }
-  if (lead.w * lead.k > hand.length) continue;
+  if (lead.N > hand.length) continue;
   for (const key of [T.lowKey(x), T.pointsKey(x)]) {
     const p = T.constructFollow(hand, lead, x, key);
     const v = T.validateFollow(p, hand, lead, x);
@@ -28,6 +33,7 @@ console.log('fuzz done, errors', errors);
 
 // 2) full games, all computer players
 const t0 = Date.now();
+let throws = 0, throwFails = 0, chaodiHands = 0, chaodiBids = 0;
 let games = 0, hands = 0, swaps = 0, ptsSum = 0, maxHands = 0;
 const levelWins = [0, 0];
 for (let g = 0; g < 150; g++) {
@@ -35,18 +41,29 @@ for (let g = 0; g < 150; g++) {
   let guard = 0;
   while (G.phase !== 'gameOver' && guard++ < 200) {
     while (!T.dealRound(G)) {
-      for (const s of [0, 1, 2, 3]) { const o = T.AI.declare(G, s, false); if (o) T.declare(G, o); }
+      if (!G.chaodi) for (const s of [0, 1, 2, 3]) { const o = T.AI.declare(G, s, false); if (o) T.declare(G, o); }
     }
-    T.finishDeclare(G);
+    T.afterDeal(G);
     if (G.hands[G.dealer].length !== 45) fail('dealer not 45');
-    T.bury(G, T.AI.bury(G));
+    let steps = 0;
+    while (G.phase === 'bury' || G.phase === 'chaodi') {
+      if (steps++ > 200) { fail('kitty round stuck'); break; }
+      if (G.phase === 'bury') {
+        if (G.hands[G.burier].length !== 45) fail('burier not 45');
+        if (G.cd && G.cd.dealerOpen) { const o = T.AI.dealerShow(G); if (o) T.declare(G, o); }
+        T.bury(G, T.AI.bury(G));
+      } else { const s = G.cd.turn; T.chaodiAct(G, s, T.AI.chaodi(G, s)); }
+    }
+    if (G.chaodi) { chaodiHands++; chaodiBids += G.cd.log.filter((l) => l.bid).length; }
     if (G.hands.some((h) => h.length !== 39)) fail('hands not 39');
     while (G.phase === 'play') {
       const s = T.turnSeat(G);
       const cards = T.AI.play(G, s);
       const v = T.checkPlay(G, s, cards);
       if (!v.ok) { fail('AI illegal: ' + v.msg); break; }
+      if (!G.trick.plays.length && !T.classify(cards, T.ctx(G))) throws++;
       if (T.playCards(G, s, cards)) T.resolveTrick(G);
+      if (G.throwFail) throwFails++;
     }
     hands++; ptsSum += G.result.points; if (G.result.swap) swaps++;
     // points sanity: total captured w/o bonus <= 300
@@ -56,4 +73,4 @@ for (let g = 0; g < 150; g++) {
   if (G.phase !== 'gameOver') fail('game did not end');
   else { games++; levelWins[G.winner]++; maxHands = Math.max(maxHands, G.handNo); }
 }
-console.log({ games, hands, avgHands: (hands / games).toFixed(1), maxHands, swapRate: (swaps / hands).toFixed(2), avgPts: (ptsSum / hands).toFixed(0), levelWins, ms: Date.now() - t0, errors });
+console.log({ games, hands, avgHands: (hands / games).toFixed(1), maxHands, swapRate: (swaps / hands).toFixed(2), avgPts: (ptsSum / hands).toFixed(0), levelWins, throws, throwFails, bidsPerHand: (chaodiBids / chaodiHands).toFixed(2), ms: Date.now() - t0, errors });
